@@ -20,33 +20,32 @@ pub fn main() !void {
     const source = try file.readToEndAlloc(allocator, std.math.maxInt(u32));
     defer allocator.free(source);
 
-    var scanner = parzig.thrift.Scanner.init(source);
-    while (true) {
-        const token = scanner.next();
-        switch (token.kind) {
-            .@"enum" => {
-                const identifier = scanner.next();
-                std.debug.assert(identifier.kind == .identifier);
-                const name = source[identifier.pos.start..identifier.pos.end];
-                std.debug.print("Enum {s}\n", .{name});
+    var document = try parzig.thrift.Document.init(allocator, source);
+    defer document.deinit();
+
+    for (document.definitions.items) |def| {
+        switch (def) {
+            .@"enum" => |*e| {
+                std.debug.print("Enum {s}\n", .{e.name});
+                var iter = e.values.iterator();
+                while (iter.next()) |kv| {
+                    std.debug.print("\t{s} = {d}\n", .{kv.key_ptr.*, kv.value_ptr.*});
+                }
             },
-            .@"union" => {
-                const identifier = scanner.next();
-                std.debug.assert(identifier.kind == .identifier);
-                const name = source[identifier.pos.start..identifier.pos.end];
-                std.debug.print("Union {s}\n", .{name});
+            .@"struct" => |*s| {
+                std.debug.print("Struct {s}\n", .{s.name});
+                var iter = s.fields.iterator();
+                while (iter.next()) |kv| {
+                    std.debug.print("\t{s} (id: {any})\n", .{kv.key_ptr.*, kv.value_ptr.*.id});
+                }
             },
-            .@"struct" => {
-                const identifier = scanner.next();
-                std.debug.assert(identifier.kind == .identifier);
-                const name = source[identifier.pos.start..identifier.pos.end];
-                std.debug.print("Struct {s}\n", .{name});
+            .@"union" => |*u| {
+                std.debug.print("Union {s}\n", .{u.name});
+                var iter = u.fields.iterator();
+                while (iter.next()) |kv| {
+                    std.debug.print("\t{s} (id: {any})\n", .{kv.key_ptr.*, kv.value_ptr.*.id});
+                }
             },
-            .end_of_document => {
-                std.debug.print("End of document\n", .{});
-                break;
-            },
-            else => {},
         }
     }
 }

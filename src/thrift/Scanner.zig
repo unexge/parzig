@@ -4,7 +4,7 @@ const std = @import("std");
 
 pub const Token = struct {
     kind: Kind,
-    pos: Pos,
+    range: Range,
 
     pub const Kind = enum {
         include,
@@ -71,12 +71,14 @@ pub const Token = struct {
         literal,
         number_literal,
         identifier,
+        true,
+        false,
 
         invalid,
         end_of_document,
     };
 
-    pub const Pos = struct {
+    pub const Range = struct {
         start: usize,
         end: usize,
     };
@@ -126,9 +128,19 @@ pub const Token = struct {
         .{ "exception", .exception },
         .{ "service", .service },
 
+        .{ "true", .true },
+        .{ "false", .false },
+
         .{ "required", .required },
         .{ "optional", .optional },
     });
+
+    pub fn eql(self: *const Token, other: *const Token) bool {
+        return self == other or
+            (self.kind == other.kind and
+            self.range.start == other.range.start and
+            self.range.end == other.range.end);
+    }
 };
 
 const Scanner = @This();
@@ -138,6 +150,10 @@ index: usize = 0,
 
 pub fn init(source: []const u8) Scanner {
     return Scanner{ .source = source };
+}
+
+pub fn text(self: *Scanner, range: *const Token.Range) []const u8 {
+    return self.source[range.start..range.end];
 }
 
 pub fn next(self: *Scanner) Token {
@@ -155,7 +171,7 @@ pub fn next(self: *Scanner) Token {
 
     var token = Token{
         .kind = .end_of_document,
-        .pos = .{ .start = self.index, .end = undefined },
+        .range = .{ .start = self.index, .end = undefined },
     };
 
     while (self.source.len > self.index) : (self.index += 1) {
@@ -164,7 +180,7 @@ pub fn next(self: *Scanner) Token {
         switch (state) {
             .start => switch (c) {
                 ' ', '\n', '\t', '\r' => {
-                    token.pos.start = self.index + 1;
+                    token.range.start = self.index + 1;
                 },
                 '\'' => {
                     state = .literal_single_quote;
@@ -249,14 +265,7 @@ pub fn next(self: *Scanner) Token {
             },
             .identifier => switch (c) {
                 'a'...'z', 'A'...'Z', '0'...'9', '.', '_' => {},
-                else => {
-                    const identifier = self.source[token.pos.start..self.index];
-                    if (Token.keywords.get(identifier)) |keyword| {
-                        token.kind = keyword;
-                    }
-
-                    break;
-                },
+                else => break,
             },
             .literal_single_quote => switch (c) {
                 '\'' => {
@@ -305,6 +314,9 @@ pub fn next(self: *Scanner) Token {
                     self.index += 1;
                     break;
                 },
+                '*' => {
+                    state = .multiline_comment_end;
+                },
                 else => {
                     state = .multiline_comment;
                 },
@@ -312,13 +324,20 @@ pub fn next(self: *Scanner) Token {
         }
     }
 
-    token.pos.end = self.index;
+    token.range.end = self.index;
+
+    if (token.kind == .identifier) {
+        const identifier = self.text(&token.range);
+        if (Token.keywords.get(identifier)) |keyword| {
+            token.kind = keyword;
+        }
+    }
 
     return token;
 }
 
 test Scanner {
-    try expectTokensWithPos(
+    try expectTokensWithTexts(
         \\namespace * parzig
         \\
         \\struct Foo {
@@ -556,6 +575,15 @@ test "identifier" {
     });
 }
 
+test "bool" {
+    try expectTokens(
+        \\true false
+    , &.{
+        .true,
+        .false,
+    });
+}
+
 test "comments" {
     try expectTokens(
         \\# this is a line comment
@@ -579,6 +607,14 @@ test "comments" {
     , &.{
         .multiline_comment,
     });
+    try expectTokens(
+        \\/**
+        \\ * this is a
+        \\ * multiline comment
+        \\ **/
+    , &.{
+        .multiline_comment,
+    });
 }
 
 test "empty document" {
@@ -594,21 +630,21 @@ fn expectTokens(source: []const u8, expected_tokens: []const Token.Kind) !void {
 
     const token = scanner.next();
     try std.testing.expectEqual(.end_of_document, token.kind);
-    try std.testing.expectEqual(source.len, token.pos.start);
-    try std.testing.expectEqual(source.len, token.pos.end);
+    try std.testing.expectEqual(source.len, token.range.start);
+    try std.testing.expectEqual(source.len, token.range.end);
 }
 
-fn expectTokensWithPos(source: []const u8, expected_tokens_and_positions: []const struct { Token.Kind, []const u8 }) !void {
+fn expectTokensWithTexts(source: []const u8, expected_tokens_and_texts: []const struct { Token.Kind, []const u8 }) !void {
     var scanner = Scanner.init(source);
 
-    for (expected_tokens_and_positions) |expected| {
+    for (expected_tokens_and_texts) |expected| {
         const token = scanner.next();
         try std.testing.expectEqual(expected[0], token.kind);
-        try std.testing.expectEqualStrings(expected[1], source[token.pos.start..token.pos.end]);
+        try std.testing.expectEqualStrings(expected[1], scanner.text(&token.range));
     }
 
     const token = scanner.next();
     try std.testing.expectEqual(.end_of_document, token.kind);
-    try std.testing.expectEqual(source.len, token.pos.start);
-    try std.testing.expectEqual(source.len, token.pos.end);
+    try std.testing.expectEqual(source.len, token.range.start);
+    try std.testing.expectEqual(source.len, token.range.end);
 }
