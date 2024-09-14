@@ -5,6 +5,7 @@
 const std = @import("std");
 
 pub const PeekableScanner = @import("./thrift/PeekableScanner.zig");
+pub const translate = @import("./thrift/translate.zig").translate;
 
 pub const Document = struct {
     headers: std.ArrayList(Header),
@@ -468,6 +469,7 @@ fn skipComments(scanner: *PeekableScanner) void {
 
 test {
     _ = PeekableScanner;
+    _ = @import("./thrift/translate.zig");
 }
 
 test "enum" {

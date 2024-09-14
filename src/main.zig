@@ -23,29 +23,13 @@ pub fn main() !void {
     var document = try parzig.thrift.Document.init(allocator, source);
     defer document.deinit();
 
-    for (document.definitions.items) |def| {
-        switch (def) {
-            .@"enum" => |*e| {
-                std.debug.print("Enum {s}\n", .{e.name});
-                var iter = e.values.iterator();
-                while (iter.next()) |kv| {
-                    std.debug.print("\t{s} = {d}\n", .{kv.key_ptr.*, kv.value_ptr.*});
-                }
-            },
-            .@"struct" => |*s| {
-                std.debug.print("Struct {s}\n", .{s.name});
-                var iter = s.fields.iterator();
-                while (iter.next()) |kv| {
-                    std.debug.print("\t{s} (id: {any})\n", .{kv.key_ptr.*, kv.value_ptr.*.id});
-                }
-            },
-            .@"union" => |*u| {
-                std.debug.print("Union {s}\n", .{u.name});
-                var iter = u.fields.iterator();
-                while (iter.next()) |kv| {
-                    std.debug.print("\t{s} (id: {any})\n", .{kv.key_ptr.*, kv.value_ptr.*.id});
-                }
-            },
-        }
-    }
+    var root = try parzig.thrift.translate(allocator, &document);
+    defer root.deinit(allocator);
+    defer allocator.free(root.source);
+
+    const formatted = try root.render(allocator);
+    defer allocator.free(formatted);
+
+    try std.io.getStdOut().writeAll(formatted);
+    return std.process.cleanExit();
 }
