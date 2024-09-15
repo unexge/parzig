@@ -38,6 +38,16 @@ const Context = struct {
         return @intCast(index);
     }
 
+    fn addExtra(self: *Context, extra: anytype) !Node.Index {
+        const fields = std.meta.fields(@TypeOf(extra));
+        const result: Node.Index = @intCast(self.extra_data.items.len);
+        inline for (fields) |field| {
+            comptime std.debug.assert(field.type == Node.Index);
+            try self.extra_data.append(@field(extra, field.name));
+        }
+        return result;
+    }
+
     fn renderDefinition(self: *Context, def: thrift.Definition) !Node.Index {
         switch (def) {
             .@"enum" => |*e| {
@@ -242,8 +252,14 @@ const Context = struct {
 
     fn renderEnum(self: *Context, e: *const thrift.Definition.Enum) !Node.Index {
         const enum_tok = try self.addToken(.keyword_enum, "enum");
+        const is_empty = e.values.count() == 0;
+        var u8_ident_tok: Node.Index = undefined;
+        if (!is_empty) {
+            _ = try self.addToken(.l_paren, "(");
+            u8_ident_tok = try self.addToken(.identifier, "u8");
+            _ = try self.addToken(.r_paren, ")");
+        }
         _ = try self.addToken(.l_brace, "{");
-
         const fields = try self.allocator.alloc(Node.Index, e.values.count());
         defer self.allocator.free(fields);
 
@@ -276,18 +292,24 @@ const Context = struct {
 
         _ = try self.addToken(.r_brace, "}");
 
-        const lhs = self.extra_data.items.len;
+        const members_start = self.extra_data.items.len;
         for (fields) |f| {
             try self.extra_data.append(f);
         }
-        const rhs = self.extra_data.items.len;
-        const is_empty = lhs == rhs;
+        const members_end = self.extra_data.items.len;
         return try self.addNode(.{
-            .tag = if (is_empty) .container_decl_two else .container_decl_trailing,
+            .tag = if (is_empty) .container_decl_two else .container_decl_arg_trailing,
             .main_token = enum_tok,
             .data = .{
-                .lhs = if (is_empty) 0 else @intCast(lhs),
-                .rhs = if (is_empty) 0 else @intCast(rhs),
+                .lhs = if (is_empty) 0 else try self.addNode(.{
+                    .tag = .identifier,
+                    .main_token = u8_ident_tok,
+                    .data = undefined,
+                }),
+                .rhs = if (is_empty) 0 else try self.addExtra(Node.SubRange{
+                    .start = @intCast(members_start),
+                    .end = @intCast(members_end),
+                }),
             },
         });
     }
@@ -433,7 +455,7 @@ test "enum" {
         \\  BAZ = 1;
         \\}
     ,
-        \\const Foo = enum {
+        \\const Foo = enum(u8) {
         \\    BAR = 0,
         \\    BAZ = 1,
         \\};
