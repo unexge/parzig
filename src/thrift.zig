@@ -5,6 +5,7 @@
 const std = @import("std");
 
 pub const PeekableScanner = @import("./thrift/PeekableScanner.zig");
+pub const OrderedStringHashMap = @import("./ordered_map.zig").OrderedStringHashMap;
 pub const translate = @import("./thrift/translate.zig").translate;
 
 pub const Document = struct {
@@ -146,17 +147,17 @@ pub const Definition = union(enum) {
 
     const Enum = struct {
         name: Identifier,
-        values: std.StringHashMap(u64),
+        values: OrderedStringHashMap(u64),
     };
 
     const Struct = struct {
         name: Identifier,
-        fields: std.StringHashMap(Field),
+        fields: OrderedStringHashMap(Field),
     };
 
     const Union = struct {
         name: Identifier,
-        fields: std.StringHashMap(Field),
+        fields: OrderedStringHashMap(Field),
     };
 
     const Field = struct {
@@ -228,7 +229,7 @@ pub const Definition = union(enum) {
     }
 
     fn parseEnum(allocator: std.mem.Allocator, scanner: *PeekableScanner) !Enum {
-        var values = std.StringHashMap(u64).init(allocator);
+        var values = try OrderedStringHashMap(u64).init(allocator);
         var nextValue: u64 = 0;
 
         const name = try parseIdentifier(scanner);
@@ -263,7 +264,7 @@ pub const Definition = union(enum) {
     }
 
     fn parseStruct(allocator: std.mem.Allocator, scanner: *PeekableScanner) !Struct {
-        var fields = std.StringHashMap(Field).init(allocator);
+        var fields = try OrderedStringHashMap(Field).init(allocator);
 
         const name = try parseIdentifier(scanner);
         _ = try scanner.expect(.brace_left);
@@ -288,7 +289,7 @@ pub const Definition = union(enum) {
     }
 
     fn parseUnion(allocator: std.mem.Allocator, scanner: *PeekableScanner) !Union {
-        var fields = std.StringHashMap(Field).init(allocator);
+        var fields = try OrderedStringHashMap(Field).init(allocator);
 
         const name = try parseIdentifier(scanner);
         _ = try scanner.expect(.brace_left);

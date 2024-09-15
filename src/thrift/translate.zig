@@ -223,10 +223,12 @@ test "enum" {
     try expectTranslated(
         \\enum Foo {
         \\  BAR = 0;
+        \\  BAZ = 1;
         \\}
     ,
         \\const Foo = enum {
         \\    BAR = 0,
+        \\    BAZ = 1,
         \\};
     );
 }
