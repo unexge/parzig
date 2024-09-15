@@ -17,16 +17,30 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe.root_module.addImport("parzig", lib);
-
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
-
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    const generate = b.addExecutable(.{
+        .name = "generate",
+        .root_source_file = b.path("src/generate.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    generate.root_module.addImport("parzig", lib);
+    b.installArtifact(generate);
+
+    const generate_cmd = b.addRunArtifact(generate);
+    if (b.args) |args| {
+        generate_cmd.addArgs(args);
+    }
+    const generate_step = b.step("generate", "Generate Zig file from parquet.thrift");
+    generate_step.dependOn(&generate_cmd.step);
 
     const lib_unit_tests = b.addTest(.{
         .root_source_file = b.path("src/parzig.zig"),
