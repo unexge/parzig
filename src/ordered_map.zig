@@ -22,7 +22,7 @@ pub fn OrderedStringHashMap(comptime T: anytype) type {
             }
         };
 
-        pub fn init(allocator: std.mem.Allocator) !Self {
+        pub fn init(allocator: std.mem.Allocator) Self {
             return Self{
                 .map = std.StringHashMap(T).init(allocator),
                 .keys = std.ArrayList([]const u8).init(allocator),
@@ -60,7 +60,7 @@ pub fn OrderedStringHashMap(comptime T: anytype) type {
 }
 
 test OrderedStringHashMap {
-    var map = try OrderedStringHashMap(u64).init(std.testing.allocator);
+    var map = OrderedStringHashMap(u64).init(std.testing.allocator);
     defer map.deinit();
     try map.put("foo", 1);
     try map.put("bar", 2);

@@ -145,17 +145,17 @@ pub const Definition = union(enum) {
     @"union": Union,
     // Other definitions such as `const`, `typedef`, `service` are not supported
 
-    const Enum = struct {
+    pub const Enum = struct {
         name: Identifier,
         values: OrderedStringHashMap(u64),
     };
 
-    const Struct = struct {
+    pub const Struct = struct {
         name: Identifier,
         fields: OrderedStringHashMap(Field),
     };
 
-    const Union = struct {
+    pub const Union = struct {
         name: Identifier,
         fields: OrderedStringHashMap(Field),
     };
@@ -229,7 +229,7 @@ pub const Definition = union(enum) {
     }
 
     fn parseEnum(allocator: std.mem.Allocator, scanner: *PeekableScanner) !Enum {
-        var values = try OrderedStringHashMap(u64).init(allocator);
+        var values = OrderedStringHashMap(u64).init(allocator);
         var nextValue: u64 = 0;
 
         const name = try parseIdentifier(scanner);
@@ -264,7 +264,7 @@ pub const Definition = union(enum) {
     }
 
     fn parseStruct(allocator: std.mem.Allocator, scanner: *PeekableScanner) !Struct {
-        var fields = try OrderedStringHashMap(Field).init(allocator);
+        var fields = OrderedStringHashMap(Field).init(allocator);
 
         const name = try parseIdentifier(scanner);
         _ = try scanner.expect(.brace_left);
@@ -289,7 +289,7 @@ pub const Definition = union(enum) {
     }
 
     fn parseUnion(allocator: std.mem.Allocator, scanner: *PeekableScanner) !Union {
-        var fields = try OrderedStringHashMap(Field).init(allocator);
+        var fields = OrderedStringHashMap(Field).init(allocator);
 
         const name = try parseIdentifier(scanner);
         _ = try scanner.expect(.brace_left);
