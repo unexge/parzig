@@ -3,7 +3,7 @@
 //
 const std = @import("std");
 const List = std.ArrayList;
-const Type = enum(u8) {
+pub const Type = enum(u8) {
     BOOLEAN = 0,
     INT32 = 1,
     INT64 = 2,
@@ -13,7 +13,7 @@ const Type = enum(u8) {
     BYTE_ARRAY = 6,
     FIXED_LEN_BYTE_ARRAY = 7,
 };
-const ConvertedType = enum(u8) {
+pub const ConvertedType = enum(u8) {
     UTF8 = 0,
     MAP = 1,
     MAP_KEY_VALUE = 2,
@@ -37,17 +37,17 @@ const ConvertedType = enum(u8) {
     BSON = 20,
     INTERVAL = 21,
 };
-const FieldRepetitionType = enum(u8) {
+pub const FieldRepetitionType = enum(u8) {
     REQUIRED = 0,
     OPTIONAL = 1,
     REPEATED = 2,
 };
-const SizeStatistics = struct {
+pub const SizeStatistics = struct {
     unencoded_byte_array_data_bytes: i64,
     repetition_level_histogram: List(i64),
     definition_level_histogram: List(i64),
 };
-const Statistics = struct {
+pub const Statistics = struct {
     max: []u8,
     min: []u8,
     null_count: i64,
@@ -57,41 +57,41 @@ const Statistics = struct {
     is_max_value_exact: bool,
     is_min_value_exact: bool,
 };
-const StringType = struct {};
-const UUIDType = struct {};
-const MapType = struct {};
-const ListType = struct {};
-const EnumType = struct {};
-const DateType = struct {};
-const Float16Type = struct {};
-const NullType = struct {};
-const DecimalType = struct {
+pub const StringType = struct {};
+pub const UUIDType = struct {};
+pub const MapType = struct {};
+pub const ListType = struct {};
+pub const EnumType = struct {};
+pub const DateType = struct {};
+pub const Float16Type = struct {};
+pub const NullType = struct {};
+pub const DecimalType = struct {
     scale: i32,
     precision: i32,
 };
-const MilliSeconds = struct {};
-const MicroSeconds = struct {};
-const NanoSeconds = struct {};
-const TimeUnit = union {
+pub const MilliSeconds = struct {};
+pub const MicroSeconds = struct {};
+pub const NanoSeconds = struct {};
+pub const TimeUnit = union {
     MILLIS: MilliSeconds,
     MICROS: MicroSeconds,
     NANOS: NanoSeconds,
 };
-const TimestampType = struct {
+pub const TimestampType = struct {
     isAdjustedToUTC: bool,
     unit: TimeUnit,
 };
-const TimeType = struct {
+pub const TimeType = struct {
     isAdjustedToUTC: bool,
     unit: TimeUnit,
 };
-const IntType = struct {
+pub const IntType = struct {
     bitWidth: i8,
     isSigned: bool,
 };
-const JsonType = struct {};
-const BsonType = struct {};
-const LogicalType = union {
+pub const JsonType = struct {};
+pub const BsonType = struct {};
+pub const LogicalType = union {
     STRING: StringType,
     MAP: MapType,
     LIST: ListType,
@@ -107,7 +107,7 @@ const LogicalType = union {
     UUID: UUIDType,
     FLOAT16: Float16Type,
 };
-const SchemaElement = struct {
+pub const SchemaElement = struct {
     type: Type,
     type_length: i32,
     repetition_type: FieldRepetitionType,
@@ -119,7 +119,7 @@ const SchemaElement = struct {
     field_id: i32,
     logicalType: LogicalType,
 };
-const Encoding = enum(u8) {
+pub const Encoding = enum(u8) {
     PLAIN = 0,
     PLAIN_DICTIONARY = 2,
     RLE = 3,
@@ -130,7 +130,7 @@ const Encoding = enum(u8) {
     RLE_DICTIONARY = 8,
     BYTE_STREAM_SPLIT = 9,
 };
-const CompressionCodec = enum(u8) {
+pub const CompressionCodec = enum(u8) {
     UNCOMPRESSED = 0,
     SNAPPY = 1,
     GZIP = 2,
@@ -140,31 +140,31 @@ const CompressionCodec = enum(u8) {
     ZSTD = 6,
     LZ4_RAW = 7,
 };
-const PageType = enum(u8) {
+pub const PageType = enum(u8) {
     DATA_PAGE = 0,
     INDEX_PAGE = 1,
     DICTIONARY_PAGE = 2,
     DATA_PAGE_V2 = 3,
 };
-const BoundaryOrder = enum(u8) {
+pub const BoundaryOrder = enum(u8) {
     UNORDERED = 0,
     ASCENDING = 1,
     DESCENDING = 2,
 };
-const DataPageHeader = struct {
+pub const DataPageHeader = struct {
     num_values: i32,
     encoding: Encoding,
     definition_level_encoding: Encoding,
     repetition_level_encoding: Encoding,
     statistics: Statistics,
 };
-const IndexPageHeader = struct {};
-const DictionaryPageHeader = struct {
+pub const IndexPageHeader = struct {};
+pub const DictionaryPageHeader = struct {
     num_values: i32,
     encoding: Encoding,
     is_sorted: bool,
 };
-const DataPageHeaderV2 = struct {
+pub const DataPageHeaderV2 = struct {
     num_values: i32,
     num_nulls: i32,
     num_rows: i32,
@@ -174,25 +174,25 @@ const DataPageHeaderV2 = struct {
     is_compressed: bool,
     statistics: Statistics,
 };
-const SplitBlockAlgorithm = struct {};
-const BloomFilterAlgorithm = union {
+pub const SplitBlockAlgorithm = struct {};
+pub const BloomFilterAlgorithm = union {
     BLOCK: SplitBlockAlgorithm,
 };
-const XxHash = struct {};
-const BloomFilterHash = union {
+pub const XxHash = struct {};
+pub const BloomFilterHash = union {
     XXHASH: XxHash,
 };
-const Uncompressed = struct {};
-const BloomFilterCompression = union {
+pub const Uncompressed = struct {};
+pub const BloomFilterCompression = union {
     UNCOMPRESSED: Uncompressed,
 };
-const BloomFilterHeader = struct {
+pub const BloomFilterHeader = struct {
     numBytes: i32,
     algorithm: BloomFilterAlgorithm,
     hash: BloomFilterHash,
     compression: BloomFilterCompression,
 };
-const PageHeader = struct {
+pub const PageHeader = struct {
     type: PageType,
     uncompressed_page_size: i32,
     compressed_page_size: i32,
@@ -202,21 +202,21 @@ const PageHeader = struct {
     dictionary_page_header: DictionaryPageHeader,
     data_page_header_v2: DataPageHeaderV2,
 };
-const KeyValue = struct {
+pub const KeyValue = struct {
     key: []u8,
     value: []u8,
 };
-const SortingColumn = struct {
+pub const SortingColumn = struct {
     column_idx: i32,
     descending: bool,
     nulls_first: bool,
 };
-const PageEncodingStats = struct {
+pub const PageEncodingStats = struct {
     page_type: PageType,
     encoding: Encoding,
     count: i32,
 };
-const ColumnMetaData = struct {
+pub const ColumnMetaData = struct {
     type: Type,
     encodings: List(Encoding),
     path_in_schema: List([]u8),
@@ -234,16 +234,16 @@ const ColumnMetaData = struct {
     bloom_filter_length: i32,
     size_statistics: SizeStatistics,
 };
-const EncryptionWithFooterKey = struct {};
-const EncryptionWithColumnKey = struct {
+pub const EncryptionWithFooterKey = struct {};
+pub const EncryptionWithColumnKey = struct {
     path_in_schema: List([]u8),
     key_metadata: []u8,
 };
-const ColumnCryptoMetaData = union {
+pub const ColumnCryptoMetaData = union {
     ENCRYPTION_WITH_FOOTER_KEY: EncryptionWithFooterKey,
     ENCRYPTION_WITH_COLUMN_KEY: EncryptionWithColumnKey,
 };
-const ColumnChunk = struct {
+pub const ColumnChunk = struct {
     file_path: []u8,
     file_offset: i64,
     meta_data: ColumnMetaData,
@@ -254,7 +254,7 @@ const ColumnChunk = struct {
     crypto_metadata: ColumnCryptoMetaData,
     encrypted_column_metadata: []u8,
 };
-const RowGroup = struct {
+pub const RowGroup = struct {
     columns: List(ColumnChunk),
     total_byte_size: i64,
     num_rows: i64,
@@ -263,20 +263,20 @@ const RowGroup = struct {
     total_compressed_size: i64,
     ordinal: i16,
 };
-const TypeDefinedOrder = struct {};
-const ColumnOrder = union {
+pub const TypeDefinedOrder = struct {};
+pub const ColumnOrder = union {
     TYPE_ORDER: TypeDefinedOrder,
 };
-const PageLocation = struct {
+pub const PageLocation = struct {
     offset: i64,
     compressed_page_size: i32,
     first_row_index: i64,
 };
-const OffsetIndex = struct {
+pub const OffsetIndex = struct {
     page_locations: List(PageLocation),
     unencoded_byte_array_data_bytes: List(i64),
 };
-const ColumnIndex = struct {
+pub const ColumnIndex = struct {
     null_pages: List(bool),
     min_values: List([]u8),
     max_values: List([]u8),
@@ -285,21 +285,21 @@ const ColumnIndex = struct {
     repetition_level_histograms: List(i64),
     definition_level_histograms: List(i64),
 };
-const AesGcmV1 = struct {
+pub const AesGcmV1 = struct {
     aad_prefix: []u8,
     aad_file_unique: []u8,
     supply_aad_prefix: bool,
 };
-const AesGcmCtrV1 = struct {
+pub const AesGcmCtrV1 = struct {
     aad_prefix: []u8,
     aad_file_unique: []u8,
     supply_aad_prefix: bool,
 };
-const EncryptionAlgorithm = union {
+pub const EncryptionAlgorithm = union {
     AES_GCM_V1: AesGcmV1,
     AES_GCM_CTR_V1: AesGcmCtrV1,
 };
-const FileMetaData = struct {
+pub const FileMetaData = struct {
     version: i32,
     schema: List(SchemaElement),
     num_rows: i64,
@@ -310,7 +310,7 @@ const FileMetaData = struct {
     encryption_algorithm: EncryptionAlgorithm,
     footer_signing_key_metadata: []u8,
 };
-const FileCryptoMetaData = struct {
+pub const FileCryptoMetaData = struct {
     encryption_algorithm: EncryptionAlgorithm,
     key_metadata: []u8,
 };

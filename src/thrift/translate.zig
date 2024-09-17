@@ -51,6 +51,7 @@ const Context = struct {
     fn renderDefinition(self: *Context, def: thrift.Definition) !Node.Index {
         switch (def) {
             .@"enum" => |*e| {
+                _ = try self.addToken(.keyword_pub, "pub");
                 const const_tok = try self.addToken(.keyword_const, "const");
                 _ = try self.addToken(.identifier, e.name);
                 _ = try self.addToken(.equal, "=");
@@ -67,6 +68,7 @@ const Context = struct {
                 });
             },
             .@"struct" => |*s| {
+                _ = try self.addToken(.keyword_pub, "pub");
                 const const_tok = try self.addToken(.keyword_const, "const");
                 _ = try self.addToken(.identifier, s.name);
                 _ = try self.addToken(.equal, "=");
@@ -83,6 +85,7 @@ const Context = struct {
                 });
             },
             .@"union" => |*u| {
+                _ = try self.addToken(.keyword_pub, "pub");
                 const const_tok = try self.addToken(.keyword_const, "const");
                 _ = try self.addToken(.identifier, u.name);
                 _ = try self.addToken(.equal, "=");
@@ -444,7 +447,7 @@ test "empty enum" {
     try expectTranslated(
         \\enum Foo {}
     ,
-        \\const Foo = enum {};
+        \\pub const Foo = enum {};
     );
 }
 
@@ -455,7 +458,7 @@ test "enum" {
         \\  BAZ = 1;
         \\}
     ,
-        \\const Foo = enum(u8) {
+        \\pub const Foo = enum(u8) {
         \\    BAR = 0,
         \\    BAZ = 1,
         \\};
@@ -467,8 +470,8 @@ test "empty struct" {
         \\struct Foo {}
         \\struct Bar {}
     ,
-        \\const Foo = struct {};
-        \\const Bar = struct {};
+        \\pub const Foo = struct {};
+        \\pub const Bar = struct {};
     );
 }
 
@@ -483,8 +486,8 @@ test "struct" {
     ,
         \\const std = @import("std");
         \\const List = std.ArrayList;
-        \\const Bar = struct {};
-        \\const Foo = struct {
+        \\pub const Bar = struct {};
+        \\pub const Foo = struct {
         \\    foo: i32,
         \\    bar: Bar,
         \\    baz: List(i64),
@@ -497,8 +500,8 @@ test "empty union" {
         \\union Foo {}
         \\union Bar {}
     ,
-        \\const Foo = union {};
-        \\const Bar = union {};
+        \\pub const Foo = union {};
+        \\pub const Bar = union {};
     );
 }
 
@@ -510,8 +513,8 @@ test "union" {
         \\  2: Bar bar;
         \\}
     ,
-        \\const Bar = struct {};
-        \\const Foo = union {
+        \\pub const Bar = struct {};
+        \\pub const Foo = union {
         \\    baz: i32,
         \\    bar: Bar,
         \\};
