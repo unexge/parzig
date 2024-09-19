@@ -104,6 +104,27 @@ const Context = struct {
         }
     }
 
+    fn renderFieldType(self: *Context, field: *const thrift.Definition.Field) !Node.Index {
+        var opt_idx: ?Node.Index = null;
+        if (field.req == .optional) {
+            opt_idx = try self.addToken(.question_mark, "?");
+        }
+
+        const type_idx = try self.renderType(field.type);
+
+        if (opt_idx) |idx| {
+            return try self.addNode(.{
+                .tag = .optional_type,
+                .main_token = idx,
+                .data = .{
+                    .lhs = type_idx,
+                    .rhs = undefined,
+                },
+            });
+        }
+        return type_idx;
+    }
+
     fn renderType(self: *Context, ty: *const thrift.Type) !Node.Index {
         const name = switch (ty.*) {
             .builtin => |*b| switch (b.*) {
@@ -178,7 +199,7 @@ const Context = struct {
             const field_tok = try self.addToken(.identifier, kv.key_ptr.*);
             _ = try self.addToken(.colon, ":");
 
-            const type_node = try self.renderType(kv.value_ptr.*.type);
+            const type_node = try self.renderFieldType(kv.value_ptr);
             fields[i] = try self.addNode(.{
                 .tag = .container_field_init,
                 .main_token = field_tok,
@@ -222,7 +243,7 @@ const Context = struct {
             const field_tok = try self.addToken(.identifier, kv.key_ptr.*);
             _ = try self.addToken(.colon, ":");
 
-            const type_node = try self.renderType(kv.value_ptr.*.type);
+            const type_node = try self.renderFieldType(kv.value_ptr);
             fields[i] = try self.addNode(.{
                 .tag = .container_field_init,
                 .main_token = field_tok,
@@ -482,6 +503,7 @@ test "struct" {
         \\  i32 foo;
         \\  Bar bar;
         \\  list<i64> baz;
+        \\  optional byte opt;
         \\}
     ,
         \\const std = @import("std");
@@ -491,6 +513,7 @@ test "struct" {
         \\    foo: i32,
         \\    bar: Bar,
         \\    baz: List(i64),
+        \\    opt: ?u8,
         \\};
     );
 }

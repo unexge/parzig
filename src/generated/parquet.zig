@@ -43,19 +43,19 @@ pub const FieldRepetitionType = enum(u8) {
     REPEATED = 2,
 };
 pub const SizeStatistics = struct {
-    unencoded_byte_array_data_bytes: i64,
-    repetition_level_histogram: List(i64),
-    definition_level_histogram: List(i64),
+    unencoded_byte_array_data_bytes: ?i64,
+    repetition_level_histogram: ?List(i64),
+    definition_level_histogram: ?List(i64),
 };
 pub const Statistics = struct {
-    max: []u8,
-    min: []u8,
-    null_count: i64,
-    distinct_count: i64,
-    max_value: []u8,
-    min_value: []u8,
-    is_max_value_exact: bool,
-    is_min_value_exact: bool,
+    max: ?[]u8,
+    min: ?[]u8,
+    null_count: ?i64,
+    distinct_count: ?i64,
+    max_value: ?[]u8,
+    min_value: ?[]u8,
+    is_max_value_exact: ?bool,
+    is_min_value_exact: ?bool,
 };
 pub const StringType = struct {};
 pub const UUIDType = struct {};
@@ -108,16 +108,16 @@ pub const LogicalType = union {
     FLOAT16: Float16Type,
 };
 pub const SchemaElement = struct {
-    type: Type,
-    type_length: i32,
-    repetition_type: FieldRepetitionType,
+    type: ?Type,
+    type_length: ?i32,
+    repetition_type: ?FieldRepetitionType,
     name: []u8,
-    num_children: i32,
-    converted_type: ConvertedType,
-    scale: i32,
-    precision: i32,
-    field_id: i32,
-    logicalType: LogicalType,
+    num_children: ?i32,
+    converted_type: ?ConvertedType,
+    scale: ?i32,
+    precision: ?i32,
+    field_id: ?i32,
+    logicalType: ?LogicalType,
 };
 pub const Encoding = enum(u8) {
     PLAIN = 0,
@@ -156,13 +156,13 @@ pub const DataPageHeader = struct {
     encoding: Encoding,
     definition_level_encoding: Encoding,
     repetition_level_encoding: Encoding,
-    statistics: Statistics,
+    statistics: ?Statistics,
 };
 pub const IndexPageHeader = struct {};
 pub const DictionaryPageHeader = struct {
     num_values: i32,
     encoding: Encoding,
-    is_sorted: bool,
+    is_sorted: ?bool,
 };
 pub const DataPageHeaderV2 = struct {
     num_values: i32,
@@ -171,8 +171,8 @@ pub const DataPageHeaderV2 = struct {
     encoding: Encoding,
     definition_levels_byte_length: i32,
     repetition_levels_byte_length: i32,
-    is_compressed: bool,
-    statistics: Statistics,
+    is_compressed: ?bool,
+    statistics: ?Statistics,
 };
 pub const SplitBlockAlgorithm = struct {};
 pub const BloomFilterAlgorithm = union {
@@ -196,15 +196,15 @@ pub const PageHeader = struct {
     type: PageType,
     uncompressed_page_size: i32,
     compressed_page_size: i32,
-    crc: i32,
-    data_page_header: DataPageHeader,
-    index_page_header: IndexPageHeader,
-    dictionary_page_header: DictionaryPageHeader,
-    data_page_header_v2: DataPageHeaderV2,
+    crc: ?i32,
+    data_page_header: ?DataPageHeader,
+    index_page_header: ?IndexPageHeader,
+    dictionary_page_header: ?DictionaryPageHeader,
+    data_page_header_v2: ?DataPageHeaderV2,
 };
 pub const KeyValue = struct {
     key: []u8,
-    value: []u8,
+    value: ?[]u8,
 };
 pub const SortingColumn = struct {
     column_idx: i32,
@@ -224,44 +224,44 @@ pub const ColumnMetaData = struct {
     num_values: i64,
     total_uncompressed_size: i64,
     total_compressed_size: i64,
-    key_value_metadata: List(KeyValue),
+    key_value_metadata: ?List(KeyValue),
     data_page_offset: i64,
-    index_page_offset: i64,
-    dictionary_page_offset: i64,
-    statistics: Statistics,
-    encoding_stats: List(PageEncodingStats),
-    bloom_filter_offset: i64,
-    bloom_filter_length: i32,
-    size_statistics: SizeStatistics,
+    index_page_offset: ?i64,
+    dictionary_page_offset: ?i64,
+    statistics: ?Statistics,
+    encoding_stats: ?List(PageEncodingStats),
+    bloom_filter_offset: ?i64,
+    bloom_filter_length: ?i32,
+    size_statistics: ?SizeStatistics,
 };
 pub const EncryptionWithFooterKey = struct {};
 pub const EncryptionWithColumnKey = struct {
     path_in_schema: List([]u8),
-    key_metadata: []u8,
+    key_metadata: ?[]u8,
 };
 pub const ColumnCryptoMetaData = union {
     ENCRYPTION_WITH_FOOTER_KEY: EncryptionWithFooterKey,
     ENCRYPTION_WITH_COLUMN_KEY: EncryptionWithColumnKey,
 };
 pub const ColumnChunk = struct {
-    file_path: []u8,
+    file_path: ?[]u8,
     file_offset: i64,
-    meta_data: ColumnMetaData,
-    offset_index_offset: i64,
-    offset_index_length: i32,
-    column_index_offset: i64,
-    column_index_length: i32,
-    crypto_metadata: ColumnCryptoMetaData,
-    encrypted_column_metadata: []u8,
+    meta_data: ?ColumnMetaData,
+    offset_index_offset: ?i64,
+    offset_index_length: ?i32,
+    column_index_offset: ?i64,
+    column_index_length: ?i32,
+    crypto_metadata: ?ColumnCryptoMetaData,
+    encrypted_column_metadata: ?[]u8,
 };
 pub const RowGroup = struct {
     columns: List(ColumnChunk),
     total_byte_size: i64,
     num_rows: i64,
-    sorting_columns: List(SortingColumn),
-    file_offset: i64,
-    total_compressed_size: i64,
-    ordinal: i16,
+    sorting_columns: ?List(SortingColumn),
+    file_offset: ?i64,
+    total_compressed_size: ?i64,
+    ordinal: ?i16,
 };
 pub const TypeDefinedOrder = struct {};
 pub const ColumnOrder = union {
@@ -274,26 +274,26 @@ pub const PageLocation = struct {
 };
 pub const OffsetIndex = struct {
     page_locations: List(PageLocation),
-    unencoded_byte_array_data_bytes: List(i64),
+    unencoded_byte_array_data_bytes: ?List(i64),
 };
 pub const ColumnIndex = struct {
     null_pages: List(bool),
     min_values: List([]u8),
     max_values: List([]u8),
     boundary_order: BoundaryOrder,
-    null_counts: List(i64),
-    repetition_level_histograms: List(i64),
-    definition_level_histograms: List(i64),
+    null_counts: ?List(i64),
+    repetition_level_histograms: ?List(i64),
+    definition_level_histograms: ?List(i64),
 };
 pub const AesGcmV1 = struct {
-    aad_prefix: []u8,
-    aad_file_unique: []u8,
-    supply_aad_prefix: bool,
+    aad_prefix: ?[]u8,
+    aad_file_unique: ?[]u8,
+    supply_aad_prefix: ?bool,
 };
 pub const AesGcmCtrV1 = struct {
-    aad_prefix: []u8,
-    aad_file_unique: []u8,
-    supply_aad_prefix: bool,
+    aad_prefix: ?[]u8,
+    aad_file_unique: ?[]u8,
+    supply_aad_prefix: ?bool,
 };
 pub const EncryptionAlgorithm = union {
     AES_GCM_V1: AesGcmV1,
@@ -304,13 +304,13 @@ pub const FileMetaData = struct {
     schema: List(SchemaElement),
     num_rows: i64,
     row_groups: List(RowGroup),
-    key_value_metadata: List(KeyValue),
-    created_by: []u8,
-    column_orders: List(ColumnOrder),
-    encryption_algorithm: EncryptionAlgorithm,
-    footer_signing_key_metadata: []u8,
+    key_value_metadata: ?List(KeyValue),
+    created_by: ?[]u8,
+    column_orders: ?List(ColumnOrder),
+    encryption_algorithm: ?EncryptionAlgorithm,
+    footer_signing_key_metadata: ?[]u8,
 };
 pub const FileCryptoMetaData = struct {
     encryption_algorithm: EncryptionAlgorithm,
-    key_metadata: []u8,
+    key_metadata: ?[]u8,
 };

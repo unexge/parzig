@@ -160,7 +160,7 @@ pub const Definition = union(enum) {
         fields: OrderedStringHashMap(Field),
     };
 
-    const Field = struct {
+    pub const Field = struct {
         id: ?u32 = null,
         req: Requiredness = .default,
         type: *Type,
