@@ -2,7 +2,6 @@
 // DO NOT EDIT.
 
 const std = @import("std");
-const List = std.ArrayList;
 pub const Type = enum(u8) {
     BOOLEAN = 0,
     INT32 = 1,
@@ -44,8 +43,8 @@ pub const FieldRepetitionType = enum(u8) {
 };
 pub const SizeStatistics = struct {
     unencoded_byte_array_data_bytes: ?i64,
-    repetition_level_histogram: ?List(i64),
-    definition_level_histogram: ?List(i64),
+    repetition_level_histogram: ?std.ArrayList(i64),
+    definition_level_histogram: ?std.ArrayList(i64),
     pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
         switch (field) {
             .unencoded_byte_array_data_bytes => return 1,
@@ -358,18 +357,18 @@ pub const PageEncodingStats = struct {
 };
 pub const ColumnMetaData = struct {
     type: Type,
-    encodings: List(Encoding),
-    path_in_schema: List([]u8),
+    encodings: std.ArrayList(Encoding),
+    path_in_schema: std.ArrayList([]u8),
     codec: CompressionCodec,
     num_values: i64,
     total_uncompressed_size: i64,
     total_compressed_size: i64,
-    key_value_metadata: ?List(KeyValue),
+    key_value_metadata: ?std.ArrayList(KeyValue),
     data_page_offset: i64,
     index_page_offset: ?i64,
     dictionary_page_offset: ?i64,
     statistics: ?Statistics,
-    encoding_stats: ?List(PageEncodingStats),
+    encoding_stats: ?std.ArrayList(PageEncodingStats),
     bloom_filter_offset: ?i64,
     bloom_filter_length: ?i32,
     size_statistics: ?SizeStatistics,
@@ -397,7 +396,7 @@ pub const ColumnMetaData = struct {
 };
 pub const EncryptionWithFooterKey = struct {};
 pub const EncryptionWithColumnKey = struct {
-    path_in_schema: List([]u8),
+    path_in_schema: std.ArrayList([]u8),
     key_metadata: ?[]u8,
     pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
         switch (field) {
@@ -437,10 +436,10 @@ pub const ColumnChunk = struct {
     }
 };
 pub const RowGroup = struct {
-    columns: List(ColumnChunk),
+    columns: std.ArrayList(ColumnChunk),
     total_byte_size: i64,
     num_rows: i64,
-    sorting_columns: ?List(SortingColumn),
+    sorting_columns: ?std.ArrayList(SortingColumn),
     file_offset: ?i64,
     total_compressed_size: ?i64,
     ordinal: ?i16,
@@ -475,8 +474,8 @@ pub const PageLocation = struct {
     }
 };
 pub const OffsetIndex = struct {
-    page_locations: List(PageLocation),
-    unencoded_byte_array_data_bytes: ?List(i64),
+    page_locations: std.ArrayList(PageLocation),
+    unencoded_byte_array_data_bytes: ?std.ArrayList(i64),
     pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
         switch (field) {
             .page_locations => return 1,
@@ -486,13 +485,13 @@ pub const OffsetIndex = struct {
     }
 };
 pub const ColumnIndex = struct {
-    null_pages: List(bool),
-    min_values: List([]u8),
-    max_values: List([]u8),
+    null_pages: std.ArrayList(bool),
+    min_values: std.ArrayList([]u8),
+    max_values: std.ArrayList([]u8),
     boundary_order: BoundaryOrder,
-    null_counts: ?List(i64),
-    repetition_level_histograms: ?List(i64),
-    definition_level_histograms: ?List(i64),
+    null_counts: ?std.ArrayList(i64),
+    repetition_level_histograms: ?std.ArrayList(i64),
+    definition_level_histograms: ?std.ArrayList(i64),
     pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
         switch (field) {
             .null_pages => return 1,
@@ -538,12 +537,12 @@ pub const EncryptionAlgorithm = union {
 };
 pub const FileMetaData = struct {
     version: i32,
-    schema: List(SchemaElement),
+    schema: std.ArrayList(SchemaElement),
     num_rows: i64,
-    row_groups: List(RowGroup),
-    key_value_metadata: ?List(KeyValue),
+    row_groups: std.ArrayList(RowGroup),
+    key_value_metadata: ?std.ArrayList(KeyValue),
     created_by: ?[]u8,
-    column_orders: ?List(ColumnOrder),
+    column_orders: ?std.ArrayList(ColumnOrder),
     encryption_algorithm: ?EncryptionAlgorithm,
     footer_signing_key_metadata: ?[]u8,
     pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {

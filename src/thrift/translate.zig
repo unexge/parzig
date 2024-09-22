@@ -13,14 +13,13 @@ const Context = struct {
     tokens: Ast.TokenList = .{},
     nodes: Ast.NodeList = .{},
     extra_data: std.ArrayList(Node.Index),
-    std_imports: std.StringHashMap([]const u8),
+    import_std: bool = false,
 
     fn deinit(self: *Context) void {
         self.buf.deinit();
         self.tokens.deinit(self.allocator);
         self.nodes.deinit(self.allocator);
         self.extra_data.deinit();
-        self.std_imports.deinit();
     }
 
     fn addToken(self: *Context, tag: Token.Tag, text: []const u8) !Ast.TokenIndex {
@@ -156,12 +155,8 @@ const Context = struct {
                 },
                 .uuid => @panic("uuid is not implemented"),
                 .list => |*l| {
-                    _ = try self.std_imports.put("List", "ArrayList");
-                    const arrayList = try self.addNode(.{
-                        .tag = .identifier,
-                        .main_token = try self.addToken(.identifier, "List"),
-                        .data = undefined,
-                    });
+                    self.import_std = true;
+                    const arrayList = try self.renderFieldAccess(.{ "std", "ArrayList" });
                     const call = try self.addNode(.{
                         .tag = .call_one,
                         .main_token = try self.addToken(.l_paren, "("),
@@ -240,6 +235,7 @@ const Context = struct {
         _ = try self.addToken(.identifier, "field");
         _ = try self.addToken(.colon, ":");
 
+        self.import_std = true;
         const field_enum = try self.renderFieldAccess(.{ "std", "meta", "FieldEnum" });
         const field_enum_paren = try self.addToken(.l_paren, "(");
         const this_tok = try self.addToken(.builtin, "@This");
@@ -529,81 +525,40 @@ const Context = struct {
         });
     }
 
-    fn renderPreludeImports(self: *Context) !void {
-        if (self.std_imports.count() == 0) {
+    fn renderPrelude(self: *Context) !void {
+        if (!self.import_std) {
             return;
         }
 
-        {
-            const const_tok = try self.addToken(.keyword_const, "const");
-            _ = try self.addToken(.identifier, "std");
-            _ = try self.addToken(.equal, "=");
+        const const_tok = try self.addToken(.keyword_const, "const");
+        _ = try self.addToken(.identifier, "std");
+        _ = try self.addToken(.equal, "=");
 
-            const import_tok = try self.addToken(.builtin, "@import");
-            _ = try self.addToken(.l_paren, "(");
-            const std_node = try self.addNode(.{
-                .tag = .string_literal,
-                .main_token = try self.addToken(.string_literal, "\"std\""),
-                .data = undefined,
-            });
-            _ = try self.addToken(.r_paren, ")");
-            _ = try self.addToken(.semicolon, ";");
+        const import_tok = try self.addToken(.builtin, "@import");
+        _ = try self.addToken(.l_paren, "(");
+        const std_node = try self.addNode(.{
+            .tag = .string_literal,
+            .main_token = try self.addToken(.string_literal, "\"std\""),
+            .data = undefined,
+        });
+        _ = try self.addToken(.r_paren, ")");
+        _ = try self.addToken(.semicolon, ";");
 
-            const import_std = try self.addNode(.{
-                .tag = .builtin_call_two,
-                .main_token = import_tok,
-                .data = .{
-                    .lhs = std_node,
-                    .rhs = 0,
-                },
-            });
-
-            try self.extra_data.append(try self.addNode(.{
-                .tag = .simple_var_decl,
-                .main_token = const_tok,
-                .data = .{
-                    .lhs = 0,
-                    .rhs = import_std,
-                },
-            }));
-        }
-
-        var iter = self.std_imports.iterator();
-        while (iter.next()) |kv| {
-            const alias = kv.key_ptr.*;
-            const element = kv.value_ptr.*;
-
-            const const_tok = try self.addToken(.keyword_const, "const");
-            _ = try self.addToken(.identifier, alias);
-            _ = try self.addToken(.equal, "=");
-
-            const std_node = try self.addNode(.{
-                .tag = .identifier,
-                .main_token = try self.addToken(.identifier, "std"),
-                .data = undefined,
-            });
-            const dot_tok = try self.addToken(.period, ".");
-            const element_tok = try self.addToken(.identifier, element);
-            _ = try self.addToken(.semicolon, ";");
-
-            const import_node = try self.addNode(.{
-                .tag = .field_access,
-                .main_token = dot_tok,
-                .data = .{
-                    .lhs = std_node,
-                    .rhs = element_tok,
-                },
-            });
-
-            try self.extra_data.append(try self.addNode(.{
-                .tag = .simple_var_decl,
-                .main_token = const_tok,
-                .data = .{
-                    .lhs = 0,
-                    .rhs = import_node,
-                },
-            }));
-        }
+        try self.extra_data.append(try self.addNode(.{
+            .tag = .simple_var_decl,
+            .main_token = const_tok,
+            .data = .{
+                .lhs = 0,
+                .rhs = try self.addNode(.{
+                    .tag = .builtin_call_two,
+                    .main_token = import_tok,
+                    .data = .{
+                        .lhs = std_node,
+                        .rhs = 0,
+                    },
+                }),
+            },
+        }));
     }
 
     fn renderFieldAccess(self: *Context, comptime parts: anytype) !Node.Index {
@@ -643,14 +598,17 @@ pub fn translate(allocator: std.mem.Allocator, document: *thrift.Document) !Ast 
         .allocator = allocator,
         .buf = std.ArrayList(u8).init(allocator),
         .extra_data = std.ArrayList(Node.Index).init(allocator),
-        .std_imports = std.StringHashMap([]const u8).init(allocator),
     };
     defer ctx.deinit();
 
-    try ctx.nodes.append(allocator, .{ .tag = .root, .main_token = 0, .data = .{
-        .lhs = undefined,
-        .rhs = undefined,
-    } });
+    try ctx.nodes.append(allocator, .{
+        .tag = .root,
+        .main_token = 0,
+        .data = .{
+            .lhs = undefined,
+            .rhs = undefined,
+        },
+    });
 
     const items = try allocator.alloc(Node.Index, document.definitions.items.len);
     defer allocator.free(items);
@@ -660,7 +618,7 @@ pub fn translate(allocator: std.mem.Allocator, document: *thrift.Document) !Ast 
     }
 
     const lhs = ctx.extra_data.items.len;
-    try ctx.renderPreludeImports();
+    try ctx.renderPrelude();
     for (items) |idx| {
         try ctx.extra_data.append(idx);
     }
@@ -729,12 +687,11 @@ test "struct" {
         \\}
     ,
         \\const std = @import("std");
-        \\const List = std.ArrayList;
         \\pub const Bar = struct {};
         \\pub const Foo = struct {
         \\    foo: i32,
         \\    bar: Bar,
-        \\    baz: List(i64),
+        \\    baz: std.ArrayList(i64),
         \\    opt: ?u8,
         \\};
     );
@@ -751,12 +708,11 @@ test "struct with field id" {
         \\}
     ,
         \\const std = @import("std");
-        \\const List = std.ArrayList;
         \\pub const Bar = struct {};
         \\pub const Foo = struct {
         \\    foo: i32,
         \\    bar: Bar,
-        \\    baz: ?List(i64),
+        \\    baz: ?std.ArrayList(i64),
         \\    qux: ?u8,
         \\    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
         \\        switch (field) {
