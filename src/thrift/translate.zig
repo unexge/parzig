@@ -4,6 +4,7 @@ const std = @import("std");
 const Ast = std.zig.Ast;
 const Node = Ast.Node;
 const Token = std.zig.Token;
+pub const OrderedStringHashMap = @import("../ordered_map.zig").OrderedStringHashMap;
 const thrift = @import("../thrift.zig");
 
 const Context = struct {
@@ -230,12 +231,189 @@ const Context = struct {
         });
     }
 
+    fn renderFieldIdMethod(self: *Context, field_ids: OrderedStringHashMap(u32)) !Node.Index {
+        _ = try self.addToken(.keyword_pub, "pub");
+        const fn_tok = try self.addToken(.keyword_fn, "fn");
+        _ = try self.addToken(.identifier, "fieldId");
+        _ = try self.addToken(.l_paren, "(");
+        _ = try self.addToken(.keyword_comptime, "comptime");
+        _ = try self.addToken(.identifier, "field");
+        _ = try self.addToken(.colon, ":");
+
+        const field_enum = try self.renderFieldAccess(.{ "std", "meta", "FieldEnum" });
+        const field_enum_paren = try self.addToken(.l_paren, "(");
+        const this_tok = try self.addToken(.builtin, "@This");
+        _ = try self.addToken(.l_paren, "(");
+        _ = try self.addToken(.r_paren, ")");
+        _ = try self.addToken(.r_paren, ")");
+        const at_this = try self.addNode(.{
+            .tag = .builtin_call_two,
+            .main_token = this_tok,
+            .data = .{
+                .lhs = undefined,
+                .rhs = undefined,
+            },
+        });
+        const fields_type = try self.addNode(.{
+            .tag = .call_one,
+            .main_token = field_enum_paren,
+            .data = .{
+                .lhs = field_enum,
+                .rhs = at_this,
+            },
+        });
+        _ = try self.addToken(.r_paren, ")");
+
+        const return_type = try self.addNode(.{
+            .tag = .optional_type,
+            .main_token = try self.addToken(.question_mark, "?"),
+            .data = .{
+                .lhs = try self.addNode(.{
+                    .tag = .identifier,
+                    .main_token = try self.addToken(.identifier, "u32"),
+                    .data = undefined,
+                }),
+                .rhs = undefined,
+            },
+        });
+
+        const fn_proto = try self.addNode(.{
+            .tag = .fn_proto_simple,
+            .main_token = fn_tok,
+            .data = .{
+                .lhs = fields_type,
+                .rhs = return_type,
+            },
+        });
+
+        const fn_body_start = try self.addToken(.l_brace, "{");
+
+        const switch_tok = try self.addToken(.keyword_switch, "switch");
+        _ = try self.addToken(.l_paren, "(");
+        const field_tok = try self.addToken(.identifier, "field");
+        _ = try self.addToken(.r_paren, ")");
+        _ = try self.addToken(.l_brace, "{");
+
+        const cases_start = self.extra_data.items.len;
+
+        var iter = field_ids.iterator();
+        while (iter.next()) |kv| {
+            const dot_tok = try self.addToken(.period, ".");
+            const field_ident = try self.addToken(.identifier, kv.key_ptr.*);
+            const field_case = try self.addNode(.{
+                .tag = .enum_literal,
+                .main_token = field_ident,
+                .data = .{
+                    .lhs = dot_tok,
+                    .rhs = 0,
+                },
+            });
+            const arrow = try self.addToken(.equal_angle_bracket_right, "=>");
+            const num_literal = try std.fmt.allocPrint(self.allocator, "{}", .{kv.value_ptr.*});
+            defer self.allocator.free(num_literal);
+            const else_return = try self.addNode(.{
+                .tag = .@"return",
+                .main_token = try self.addToken(.keyword_return, "return"),
+                .data = .{
+                    .lhs = try self.addNode(.{
+                        .tag = .number_literal,
+                        .main_token = try self.addToken(.number_literal, num_literal),
+                        .data = .{
+                            .lhs = undefined,
+                            .rhs = undefined,
+                        },
+                    }),
+                    .rhs = undefined,
+                },
+            });
+            _ = try self.addToken(.comma, ",");
+            _ = try self.extra_data.append(try self.addNode(.{
+                .tag = .switch_case_one,
+                .main_token = arrow,
+                .data = .{
+                    .lhs = field_case,
+                    .rhs = else_return,
+                },
+            }));
+        }
+
+        _ = try self.addToken(.keyword_else, "else");
+        const else_arrow = try self.addToken(.equal_angle_bracket_right, "=>");
+        const else_return = try self.addNode(.{
+            .tag = .@"return",
+            .main_token = try self.addToken(.keyword_return, "return"),
+            .data = .{
+                .lhs = try self.addNode(.{
+                    .tag = .identifier,
+                    .main_token = try self.addToken(.identifier, "null"),
+                    .data = .{
+                        .lhs = undefined,
+                        .rhs = undefined,
+                    },
+                }),
+                .rhs = undefined,
+            },
+        });
+        _ = try self.extra_data.append(try self.addNode(.{
+            .tag = .switch_case_one,
+            .main_token = else_arrow,
+            .data = .{
+                .lhs = 0,
+                .rhs = else_return,
+            },
+        }));
+
+        _ = try self.addToken(.r_brace, "}");
+
+        const cases_end = self.extra_data.items.len;
+
+        const switch_expression = try self.addNode(.{
+            .tag = .@"switch",
+            .main_token = switch_tok,
+            .data = .{
+                .lhs = try self.addNode(.{
+                    .tag = .identifier,
+                    .main_token = field_tok,
+                    .data = .{
+                        .lhs = undefined,
+                        .rhs = undefined,
+                    },
+                }),
+                .rhs = try self.addExtra(Node.SubRange{
+                    .start = @intCast(cases_start),
+                    .end = @intCast(cases_end),
+                }),
+            },
+        });
+        const fn_body = try self.addNode(.{
+            .tag = .block_two,
+            .main_token = fn_body_start,
+            .data = .{
+                .lhs = switch_expression,
+                .rhs = 0,
+            },
+        });
+        _ = try self.addToken(.r_brace, "}");
+
+        return self.addNode(.{
+            .tag = .fn_decl,
+            .main_token = fn_tok,
+            .data = .{
+                .lhs = fn_proto,
+                .rhs = fn_body,
+            },
+        });
+    }
+
     fn renderStruct(self: *Context, s: *const thrift.Definition.Struct) !Node.Index {
         const struct_tok = try self.addToken(.keyword_struct, "struct");
         _ = try self.addToken(.l_brace, "{");
 
         const fields = try self.allocator.alloc(Node.Index, s.fields.count());
         defer self.allocator.free(fields);
+
+        var field_ids = OrderedStringHashMap(u32).init(self.allocator);
+        defer field_ids.deinit();
 
         var iter = s.fields.iterator();
         var i: usize = 0;
@@ -252,8 +430,18 @@ const Context = struct {
                     .rhs = 0,
                 },
             });
+
+            if (kv.value_ptr.*.id) |id| {
+                try field_ids.put(kv.key_ptr.*, id);
+            }
+
             _ = try self.addToken(.comma, ",");
             i += 1;
+        }
+
+        var field_id_method: ?Node.Index = null;
+        if (field_ids.count() > 0) {
+            field_id_method = try self.renderFieldIdMethod(field_ids);
         }
 
         _ = try self.addToken(.r_brace, "}");
@@ -262,10 +450,13 @@ const Context = struct {
         for (fields) |f| {
             try self.extra_data.append(f);
         }
+        if (field_id_method) |idx| {
+            try self.extra_data.append(idx);
+        }
         const rhs = self.extra_data.items.len;
         const is_empty = lhs == rhs;
         return try self.addNode(.{
-            .tag = if (is_empty) .container_decl_two else .container_decl_trailing,
+            .tag = if (is_empty) .container_decl_two else if (field_id_method == null) .container_decl_trailing else .container_decl,
             .main_token = struct_tok,
             .data = .{
                 .lhs = if (is_empty) 0 else @intCast(lhs),
@@ -414,6 +605,37 @@ const Context = struct {
             }));
         }
     }
+
+    fn renderFieldAccess(self: *Context, comptime parts: anytype) !Node.Index {
+        if (parts.len < 2) {
+            @compileError("`parts` must contain at least two elements");
+        }
+
+        var prev: ?Node.Index = null;
+        inline for (parts) |part| {
+            if (prev) |p| {
+                prev = try self.addNode(.{
+                    .tag = .field_access,
+                    .main_token = try self.addToken(.period, "."),
+                    .data = .{
+                        .lhs = p,
+                        .rhs = try self.addToken(.identifier, part),
+                    },
+                });
+            } else {
+                prev = try self.addNode(.{
+                    .tag = .identifier,
+                    .main_token = try self.addToken(.identifier, part),
+                    .data = .{
+                        .lhs = undefined,
+                        .rhs = undefined,
+                    },
+                });
+            }
+        }
+
+        return prev.?;
+    }
 };
 
 pub fn translate(allocator: std.mem.Allocator, document: *thrift.Document) !Ast {
@@ -514,6 +736,36 @@ test "struct" {
         \\    bar: Bar,
         \\    baz: List(i64),
         \\    opt: ?u8,
+        \\};
+    );
+}
+
+test "struct with field id" {
+    try expectTranslated(
+        \\struct Bar {}
+        \\struct Foo {
+        \\  1: i32 foo;
+        \\  5: required Bar bar;
+        \\  2: optional list<i64> baz;
+        \\  optional byte qux;
+        \\}
+    ,
+        \\const std = @import("std");
+        \\const List = std.ArrayList;
+        \\pub const Bar = struct {};
+        \\pub const Foo = struct {
+        \\    foo: i32,
+        \\    bar: Bar,
+        \\    baz: ?List(i64),
+        \\    qux: ?u8,
+        \\    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+        \\        switch (field) {
+        \\            .foo => return 1,
+        \\            .bar => return 5,
+        \\            .baz => return 2,
+        \\            else => return null,
+        \\        }
+        \\    }
         \\};
     );
 }
