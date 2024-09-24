@@ -43,27 +43,26 @@ pub const FieldRepetitionType = enum(u8) {
 };
 pub const SizeStatistics = struct {
     unencoded_byte_array_data_bytes: ?i64,
-    repetition_level_histogram: ?std.ArrayList(i64),
-    definition_level_histogram: ?std.ArrayList(i64),
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    repetition_level_histogram: ?[]i64,
+    definition_level_histogram: ?[]i64,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .unencoded_byte_array_data_bytes => return 1,
             .repetition_level_histogram => return 2,
             .definition_level_histogram => return 3,
-            else => return null,
         }
     }
 };
 pub const Statistics = struct {
-    max: ?[]u8,
-    min: ?[]u8,
+    max: ?[]const u8,
+    min: ?[]const u8,
     null_count: ?i64,
     distinct_count: ?i64,
-    max_value: ?[]u8,
-    min_value: ?[]u8,
+    max_value: ?[]const u8,
+    min_value: ?[]const u8,
     is_max_value_exact: ?bool,
     is_min_value_exact: ?bool,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .max => return 1,
             .min => return 2,
@@ -73,7 +72,6 @@ pub const Statistics = struct {
             .min_value => return 6,
             .is_max_value_exact => return 7,
             .is_min_value_exact => return 8,
-            else => return null,
         }
     }
 };
@@ -88,11 +86,10 @@ pub const NullType = struct {};
 pub const DecimalType = struct {
     scale: i32,
     precision: i32,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .scale => return 1,
             .precision => return 2,
-            else => return null,
         }
     }
 };
@@ -107,33 +104,30 @@ pub const TimeUnit = union {
 pub const TimestampType = struct {
     isAdjustedToUTC: bool,
     unit: TimeUnit,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .isAdjustedToUTC => return 1,
             .unit => return 2,
-            else => return null,
         }
     }
 };
 pub const TimeType = struct {
     isAdjustedToUTC: bool,
     unit: TimeUnit,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .isAdjustedToUTC => return 1,
             .unit => return 2,
-            else => return null,
         }
     }
 };
 pub const IntType = struct {
     bitWidth: i8,
     isSigned: bool,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .bitWidth => return 1,
             .isSigned => return 2,
-            else => return null,
         }
     }
 };
@@ -159,14 +153,14 @@ pub const SchemaElement = struct {
     type: ?Type,
     type_length: ?i32,
     repetition_type: ?FieldRepetitionType,
-    name: []u8,
+    name: []const u8,
     num_children: ?i32,
     converted_type: ?ConvertedType,
     scale: ?i32,
     precision: ?i32,
     field_id: ?i32,
     logicalType: ?LogicalType,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .type => return 1,
             .type_length => return 2,
@@ -178,7 +172,6 @@ pub const SchemaElement = struct {
             .precision => return 8,
             .field_id => return 9,
             .logicalType => return 10,
-            else => return null,
         }
     }
 };
@@ -220,14 +213,13 @@ pub const DataPageHeader = struct {
     definition_level_encoding: Encoding,
     repetition_level_encoding: Encoding,
     statistics: ?Statistics,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .num_values => return 1,
             .encoding => return 2,
             .definition_level_encoding => return 3,
             .repetition_level_encoding => return 4,
             .statistics => return 5,
-            else => return null,
         }
     }
 };
@@ -236,12 +228,11 @@ pub const DictionaryPageHeader = struct {
     num_values: i32,
     encoding: Encoding,
     is_sorted: ?bool,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .num_values => return 1,
             .encoding => return 2,
             .is_sorted => return 3,
-            else => return null,
         }
     }
 };
@@ -254,7 +245,7 @@ pub const DataPageHeaderV2 = struct {
     repetition_levels_byte_length: i32,
     is_compressed: ?bool,
     statistics: ?Statistics,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .num_values => return 1,
             .num_nulls => return 2,
@@ -264,7 +255,6 @@ pub const DataPageHeaderV2 = struct {
             .repetition_levels_byte_length => return 6,
             .is_compressed => return 7,
             .statistics => return 8,
-            else => return null,
         }
     }
 };
@@ -285,13 +275,12 @@ pub const BloomFilterHeader = struct {
     algorithm: BloomFilterAlgorithm,
     hash: BloomFilterHash,
     compression: BloomFilterCompression,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .numBytes => return 1,
             .algorithm => return 2,
             .hash => return 3,
             .compression => return 4,
-            else => return null,
         }
     }
 };
@@ -304,7 +293,7 @@ pub const PageHeader = struct {
     index_page_header: ?IndexPageHeader,
     dictionary_page_header: ?DictionaryPageHeader,
     data_page_header_v2: ?DataPageHeaderV2,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .type => return 1,
             .uncompressed_page_size => return 2,
@@ -314,18 +303,16 @@ pub const PageHeader = struct {
             .index_page_header => return 6,
             .dictionary_page_header => return 7,
             .data_page_header_v2 => return 8,
-            else => return null,
         }
     }
 };
 pub const KeyValue = struct {
-    key: []u8,
-    value: ?[]u8,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    key: []const u8,
+    value: ?[]const u8,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .key => return 1,
             .value => return 2,
-            else => return null,
         }
     }
 };
@@ -333,12 +320,11 @@ pub const SortingColumn = struct {
     column_idx: i32,
     descending: bool,
     nulls_first: bool,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .column_idx => return 1,
             .descending => return 2,
             .nulls_first => return 3,
-            else => return null,
         }
     }
 };
@@ -346,33 +332,32 @@ pub const PageEncodingStats = struct {
     page_type: PageType,
     encoding: Encoding,
     count: i32,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .page_type => return 1,
             .encoding => return 2,
             .count => return 3,
-            else => return null,
         }
     }
 };
 pub const ColumnMetaData = struct {
     type: Type,
-    encodings: std.ArrayList(Encoding),
-    path_in_schema: std.ArrayList([]u8),
+    encodings: []Encoding,
+    path_in_schema: [][]const u8,
     codec: CompressionCodec,
     num_values: i64,
     total_uncompressed_size: i64,
     total_compressed_size: i64,
-    key_value_metadata: ?std.ArrayList(KeyValue),
+    key_value_metadata: ?[]KeyValue,
     data_page_offset: i64,
     index_page_offset: ?i64,
     dictionary_page_offset: ?i64,
     statistics: ?Statistics,
-    encoding_stats: ?std.ArrayList(PageEncodingStats),
+    encoding_stats: ?[]PageEncodingStats,
     bloom_filter_offset: ?i64,
     bloom_filter_length: ?i32,
     size_statistics: ?SizeStatistics,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .type => return 1,
             .encodings => return 2,
@@ -390,19 +375,17 @@ pub const ColumnMetaData = struct {
             .bloom_filter_offset => return 14,
             .bloom_filter_length => return 15,
             .size_statistics => return 16,
-            else => return null,
         }
     }
 };
 pub const EncryptionWithFooterKey = struct {};
 pub const EncryptionWithColumnKey = struct {
-    path_in_schema: std.ArrayList([]u8),
-    key_metadata: ?[]u8,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    path_in_schema: [][]const u8,
+    key_metadata: ?[]const u8,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .path_in_schema => return 1,
             .key_metadata => return 2,
-            else => return null,
         }
     }
 };
@@ -411,7 +394,7 @@ pub const ColumnCryptoMetaData = union {
     ENCRYPTION_WITH_COLUMN_KEY: EncryptionWithColumnKey,
 };
 pub const ColumnChunk = struct {
-    file_path: ?[]u8,
+    file_path: ?[]const u8,
     file_offset: i64,
     meta_data: ?ColumnMetaData,
     offset_index_offset: ?i64,
@@ -419,8 +402,8 @@ pub const ColumnChunk = struct {
     column_index_offset: ?i64,
     column_index_length: ?i32,
     crypto_metadata: ?ColumnCryptoMetaData,
-    encrypted_column_metadata: ?[]u8,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    encrypted_column_metadata: ?[]const u8,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .file_path => return 1,
             .file_offset => return 2,
@@ -431,19 +414,18 @@ pub const ColumnChunk = struct {
             .column_index_length => return 7,
             .crypto_metadata => return 8,
             .encrypted_column_metadata => return 9,
-            else => return null,
         }
     }
 };
 pub const RowGroup = struct {
-    columns: std.ArrayList(ColumnChunk),
+    columns: []ColumnChunk,
     total_byte_size: i64,
     num_rows: i64,
-    sorting_columns: ?std.ArrayList(SortingColumn),
+    sorting_columns: ?[]SortingColumn,
     file_offset: ?i64,
     total_compressed_size: ?i64,
     ordinal: ?i16,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .columns => return 1,
             .total_byte_size => return 2,
@@ -452,7 +434,6 @@ pub const RowGroup = struct {
             .file_offset => return 5,
             .total_compressed_size => return 6,
             .ordinal => return 7,
-            else => return null,
         }
     }
 };
@@ -464,35 +445,33 @@ pub const PageLocation = struct {
     offset: i64,
     compressed_page_size: i32,
     first_row_index: i64,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .offset => return 1,
             .compressed_page_size => return 2,
             .first_row_index => return 3,
-            else => return null,
         }
     }
 };
 pub const OffsetIndex = struct {
-    page_locations: std.ArrayList(PageLocation),
-    unencoded_byte_array_data_bytes: ?std.ArrayList(i64),
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    page_locations: []PageLocation,
+    unencoded_byte_array_data_bytes: ?[]i64,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .page_locations => return 1,
             .unencoded_byte_array_data_bytes => return 2,
-            else => return null,
         }
     }
 };
 pub const ColumnIndex = struct {
-    null_pages: std.ArrayList(bool),
-    min_values: std.ArrayList([]u8),
-    max_values: std.ArrayList([]u8),
+    null_pages: []bool,
+    min_values: [][]const u8,
+    max_values: [][]const u8,
     boundary_order: BoundaryOrder,
-    null_counts: ?std.ArrayList(i64),
-    repetition_level_histograms: ?std.ArrayList(i64),
-    definition_level_histograms: ?std.ArrayList(i64),
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    null_counts: ?[]i64,
+    repetition_level_histograms: ?[]i64,
+    definition_level_histograms: ?[]i64,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .null_pages => return 1,
             .min_values => return 2,
@@ -501,33 +480,30 @@ pub const ColumnIndex = struct {
             .null_counts => return 5,
             .repetition_level_histograms => return 6,
             .definition_level_histograms => return 7,
-            else => return null,
         }
     }
 };
 pub const AesGcmV1 = struct {
-    aad_prefix: ?[]u8,
-    aad_file_unique: ?[]u8,
+    aad_prefix: ?[]const u8,
+    aad_file_unique: ?[]const u8,
     supply_aad_prefix: ?bool,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .aad_prefix => return 1,
             .aad_file_unique => return 2,
             .supply_aad_prefix => return 3,
-            else => return null,
         }
     }
 };
 pub const AesGcmCtrV1 = struct {
-    aad_prefix: ?[]u8,
-    aad_file_unique: ?[]u8,
+    aad_prefix: ?[]const u8,
+    aad_file_unique: ?[]const u8,
     supply_aad_prefix: ?bool,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .aad_prefix => return 1,
             .aad_file_unique => return 2,
             .supply_aad_prefix => return 3,
-            else => return null,
         }
     }
 };
@@ -537,15 +513,15 @@ pub const EncryptionAlgorithm = union {
 };
 pub const FileMetaData = struct {
     version: i32,
-    schema: std.ArrayList(SchemaElement),
+    schema: []SchemaElement,
     num_rows: i64,
-    row_groups: std.ArrayList(RowGroup),
-    key_value_metadata: ?std.ArrayList(KeyValue),
-    created_by: ?[]u8,
-    column_orders: ?std.ArrayList(ColumnOrder),
+    row_groups: []RowGroup,
+    key_value_metadata: ?[]KeyValue,
+    created_by: ?[]const u8,
+    column_orders: ?[]ColumnOrder,
     encryption_algorithm: ?EncryptionAlgorithm,
-    footer_signing_key_metadata: ?[]u8,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    footer_signing_key_metadata: ?[]const u8,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .version => return 1,
             .schema => return 2,
@@ -556,18 +532,16 @@ pub const FileMetaData = struct {
             .column_orders => return 7,
             .encryption_algorithm => return 8,
             .footer_signing_key_metadata => return 9,
-            else => return null,
         }
     }
 };
 pub const FileCryptoMetaData = struct {
     encryption_algorithm: EncryptionAlgorithm,
-    key_metadata: ?[]u8,
-    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+    key_metadata: ?[]const u8,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         switch (field) {
             .encryption_algorithm => return 1,
             .key_metadata => return 2,
-            else => return null,
         }
     }
 };

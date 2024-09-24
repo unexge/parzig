@@ -138,8 +138,8 @@ const Context = struct {
                 .string, .binary => {
                     const l_bracket = try self.addToken(.l_bracket, "[");
                     _ = try self.addToken(.r_bracket, "]");
-                    // TODO: Make this `const u8`.
-                    const const_u8 = try self.addNode(.{
+                    _ = try self.addToken(.keyword_const, "const");
+                    const u8_node = try self.addNode(.{
                         .tag = .identifier,
                         .main_token = try self.addToken(.identifier, "u8"),
                         .data = undefined,
@@ -149,25 +149,22 @@ const Context = struct {
                         .main_token = l_bracket,
                         .data = .{
                             .lhs = 0,
-                            .rhs = const_u8,
+                            .rhs = u8_node,
                         },
                     });
                 },
                 .uuid => @panic("uuid is not implemented"),
                 .list => |*l| {
-                    self.import_std = true;
-                    const arrayList = try self.renderFieldAccess(.{ "std", "ArrayList" });
-                    const call = try self.addNode(.{
-                        .tag = .call_one,
-                        .main_token = try self.addToken(.l_paren, "("),
+                    const l_bracket = try self.addToken(.l_bracket, "[");
+                    _ = try self.addToken(.r_bracket, "]");
+                    return try self.addNode(.{
+                        .tag = .ptr_type_aligned,
+                        .main_token = l_bracket,
                         .data = .{
-                            .lhs = arrayList,
+                            .lhs = 0,
                             .rhs = try self.renderType(l.element),
                         },
                     });
-                    _ = try self.addToken(.r_paren, ")");
-
-                    return call;
                 },
                 .set => @panic("set is not implemented"),
                 .map => @panic("map is not implemented"),
@@ -261,16 +258,9 @@ const Context = struct {
         _ = try self.addToken(.r_paren, ")");
 
         const return_type = try self.addNode(.{
-            .tag = .optional_type,
-            .main_token = try self.addToken(.question_mark, "?"),
-            .data = .{
-                .lhs = try self.addNode(.{
-                    .tag = .identifier,
-                    .main_token = try self.addToken(.identifier, "u32"),
-                    .data = undefined,
-                }),
-                .rhs = undefined,
-            },
+            .tag = .identifier,
+            .main_token = try self.addToken(.identifier, "u32"),
+            .data = undefined,
         });
 
         const fn_proto = try self.addNode(.{
@@ -307,7 +297,7 @@ const Context = struct {
             const arrow = try self.addToken(.equal_angle_bracket_right, "=>");
             const num_literal = try std.fmt.allocPrint(self.allocator, "{}", .{kv.value_ptr.*});
             defer self.allocator.free(num_literal);
-            const else_return = try self.addNode(.{
+            const return_stmt = try self.addNode(.{
                 .tag = .@"return",
                 .main_token = try self.addToken(.keyword_return, "return"),
                 .data = .{
@@ -322,42 +312,19 @@ const Context = struct {
                     .rhs = undefined,
                 },
             });
-            _ = try self.addToken(.comma, ",");
+
+            if (iter.index != field_ids.count()) {
+                _ = try self.addToken(.comma, ",");
+            }
             _ = try self.extra_data.append(try self.addNode(.{
                 .tag = .switch_case_one,
                 .main_token = arrow,
                 .data = .{
                     .lhs = field_case,
-                    .rhs = else_return,
+                    .rhs = return_stmt,
                 },
             }));
         }
-
-        _ = try self.addToken(.keyword_else, "else");
-        const else_arrow = try self.addToken(.equal_angle_bracket_right, "=>");
-        const else_return = try self.addNode(.{
-            .tag = .@"return",
-            .main_token = try self.addToken(.keyword_return, "return"),
-            .data = .{
-                .lhs = try self.addNode(.{
-                    .tag = .identifier,
-                    .main_token = try self.addToken(.identifier, "null"),
-                    .data = .{
-                        .lhs = undefined,
-                        .rhs = undefined,
-                    },
-                }),
-                .rhs = undefined,
-            },
-        });
-        _ = try self.extra_data.append(try self.addNode(.{
-            .tag = .switch_case_one,
-            .main_token = else_arrow,
-            .data = .{
-                .lhs = 0,
-                .rhs = else_return,
-            },
-        }));
 
         _ = try self.addToken(.r_brace, "}");
 
@@ -686,12 +653,11 @@ test "struct" {
         \\  optional byte opt;
         \\}
     ,
-        \\const std = @import("std");
         \\pub const Bar = struct {};
         \\pub const Foo = struct {
         \\    foo: i32,
         \\    bar: Bar,
-        \\    baz: std.ArrayList(i64),
+        \\    baz: []i64,
         \\    opt: ?u8,
         \\};
     );
@@ -704,6 +670,7 @@ test "struct with field id" {
         \\  1: i32 foo;
         \\  5: required Bar bar;
         \\  2: optional list<i64> baz;
+        \\  3: string foobar;
         \\  optional byte qux;
         \\}
     ,
@@ -712,14 +679,15 @@ test "struct with field id" {
         \\pub const Foo = struct {
         \\    foo: i32,
         \\    bar: Bar,
-        \\    baz: ?std.ArrayList(i64),
+        \\    baz: ?[]i64,
+        \\    foobar: []const u8,
         \\    qux: ?u8,
-        \\    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) ?u32 {
+        \\    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         \\        switch (field) {
         \\            .foo => return 1,
         \\            .bar => return 5,
         \\            .baz => return 2,
-        \\            else => return null,
+        \\            .foobar => return 3,
         \\        }
         \\    }
         \\};
