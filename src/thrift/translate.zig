@@ -385,12 +385,24 @@ const Context = struct {
             _ = try self.addToken(.colon, ":");
 
             const type_node = try self.renderFieldType(kv.value_ptr);
+            const init_expr = if (kv.value_ptr.*.req == .optional) blk: {
+                _ = try self.addToken(.equal, "=");
+                break :blk try self.addNode(.{
+                    .tag = .identifier,
+                    .main_token = try self.addToken(.identifier, "null"),
+                    .data = .{
+                        .lhs = undefined,
+                        .rhs = undefined,
+                    },
+                });
+            } else 0;
+
             fields[i] = try self.addNode(.{
                 .tag = .container_field_init,
                 .main_token = field_tok,
                 .data = .{
                     .lhs = type_node,
-                    .rhs = 0,
+                    .rhs = init_expr,
                 },
             });
 
@@ -658,7 +670,7 @@ test "struct" {
         \\    foo: i32,
         \\    bar: Bar,
         \\    baz: []i64,
-        \\    opt: ?u8,
+        \\    opt: ?u8 = null,
         \\};
     );
 }
@@ -679,9 +691,9 @@ test "struct with field id" {
         \\pub const Foo = struct {
         \\    foo: i32,
         \\    bar: Bar,
-        \\    baz: ?[]i64,
+        \\    baz: ?[]i64 = null,
         \\    foobar: []const u8,
-        \\    qux: ?u8,
+        \\    qux: ?u8 = null,
         \\    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
         \\        switch (field) {
         \\            .foo => return 1,
