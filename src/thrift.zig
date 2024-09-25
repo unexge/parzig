@@ -6,6 +6,7 @@ const std = @import("std");
 
 pub const PeekableScanner = @import("./thrift/PeekableScanner.zig");
 pub const OrderedStringHashMap = @import("./ordered_map.zig").OrderedStringHashMap;
+pub const protocol_compact = @import("./thrift/protocol/compact.zig");
 pub const translate = @import("./thrift/translate.zig").translate;
 
 pub const Document = struct {
@@ -470,6 +471,7 @@ fn skipComments(scanner: *PeekableScanner) void {
 
 test {
     _ = PeekableScanner;
+    _ = protocol_compact;
     _ = @import("./thrift/translate.zig");
 }
 

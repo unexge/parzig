@@ -740,10 +740,17 @@ test "union" {
         \\  2: Bar bar;
         \\}
     ,
+        \\const std = @import("std");
         \\pub const Bar = struct {};
         \\pub const Foo = union {
         \\    baz: i32,
         \\    bar: Bar,
+        \\    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
+        \\        switch (field) {
+        \\            .baz => return 1,
+        \\            .bar => return 2,
+        \\        }
+        \\    }
         \\};
     );
 }
