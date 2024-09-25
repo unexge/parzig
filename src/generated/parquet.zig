@@ -100,6 +100,13 @@ pub const TimeUnit = union {
     MILLIS: MilliSeconds,
     MICROS: MicroSeconds,
     NANOS: NanoSeconds,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
+        switch (field) {
+            .MILLIS => return 1,
+            .MICROS => return 2,
+            .NANOS => return 3,
+        }
+    }
 };
 pub const TimestampType = struct {
     isAdjustedToUTC: bool,
@@ -148,6 +155,24 @@ pub const LogicalType = union {
     BSON: BsonType,
     UUID: UUIDType,
     FLOAT16: Float16Type,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
+        switch (field) {
+            .STRING => return 1,
+            .MAP => return 2,
+            .LIST => return 3,
+            .ENUM => return 4,
+            .DECIMAL => return 5,
+            .DATE => return 6,
+            .TIME => return 7,
+            .TIMESTAMP => return 8,
+            .INTEGER => return 10,
+            .UNKNOWN => return 11,
+            .JSON => return 12,
+            .BSON => return 13,
+            .UUID => return 14,
+            .FLOAT16 => return 15,
+        }
+    }
 };
 pub const SchemaElement = struct {
     type: ?Type = null,
@@ -261,14 +286,29 @@ pub const DataPageHeaderV2 = struct {
 pub const SplitBlockAlgorithm = struct {};
 pub const BloomFilterAlgorithm = union {
     BLOCK: SplitBlockAlgorithm,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
+        switch (field) {
+            .BLOCK => return 1,
+        }
+    }
 };
 pub const XxHash = struct {};
 pub const BloomFilterHash = union {
     XXHASH: XxHash,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
+        switch (field) {
+            .XXHASH => return 1,
+        }
+    }
 };
 pub const Uncompressed = struct {};
 pub const BloomFilterCompression = union {
     UNCOMPRESSED: Uncompressed,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
+        switch (field) {
+            .UNCOMPRESSED => return 1,
+        }
+    }
 };
 pub const BloomFilterHeader = struct {
     numBytes: i32,
@@ -392,6 +432,12 @@ pub const EncryptionWithColumnKey = struct {
 pub const ColumnCryptoMetaData = union {
     ENCRYPTION_WITH_FOOTER_KEY: EncryptionWithFooterKey,
     ENCRYPTION_WITH_COLUMN_KEY: EncryptionWithColumnKey,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
+        switch (field) {
+            .ENCRYPTION_WITH_FOOTER_KEY => return 1,
+            .ENCRYPTION_WITH_COLUMN_KEY => return 2,
+        }
+    }
 };
 pub const ColumnChunk = struct {
     file_path: ?[]const u8 = null,
@@ -440,6 +486,11 @@ pub const RowGroup = struct {
 pub const TypeDefinedOrder = struct {};
 pub const ColumnOrder = union {
     TYPE_ORDER: TypeDefinedOrder,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
+        switch (field) {
+            .TYPE_ORDER => return 1,
+        }
+    }
 };
 pub const PageLocation = struct {
     offset: i64,
@@ -510,6 +561,12 @@ pub const AesGcmCtrV1 = struct {
 pub const EncryptionAlgorithm = union {
     AES_GCM_V1: AesGcmV1,
     AES_GCM_CTR_V1: AesGcmCtrV1,
+    pub fn fieldId(comptime field: std.meta.FieldEnum(@This())) u32 {
+        switch (field) {
+            .AES_GCM_V1 => return 1,
+            .AES_GCM_CTR_V1 => return 2,
+        }
+    }
 };
 pub const FileMetaData = struct {
     version: i32,

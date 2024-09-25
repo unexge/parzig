@@ -186,6 +186,9 @@ const Context = struct {
         const fields = try self.allocator.alloc(Node.Index, s.fields.count());
         defer self.allocator.free(fields);
 
+        var field_ids = OrderedStringHashMap(u32).init(self.allocator);
+        defer field_ids.deinit();
+
         var iter = s.fields.iterator();
         var i: usize = 0;
         while (iter.next()) |kv| {
@@ -201,8 +204,18 @@ const Context = struct {
                     .rhs = 0,
                 },
             });
+
+            if (kv.value_ptr.*.id) |id| {
+                try field_ids.put(kv.key_ptr.*, id);
+            }
+
             _ = try self.addToken(.comma, ",");
             i += 1;
+        }
+
+        var field_id_method: ?Node.Index = null;
+        if (field_ids.count() > 0) {
+            field_id_method = try self.renderFieldIdMethod(field_ids);
         }
 
         _ = try self.addToken(.r_brace, "}");
@@ -211,10 +224,13 @@ const Context = struct {
         for (fields) |f| {
             try self.extra_data.append(f);
         }
+        if (field_id_method) |idx| {
+            try self.extra_data.append(idx);
+        }
         const rhs = self.extra_data.items.len;
         const is_empty = lhs == rhs;
         return try self.addNode(.{
-            .tag = if (is_empty) .container_decl_two else .container_decl_trailing,
+            .tag = if (is_empty) .container_decl_two else if (field_id_method == null) .container_decl_trailing else .container_decl,
             .main_token = union_tok,
             .data = .{
                 .lhs = if (is_empty) 0 else @intCast(lhs),
