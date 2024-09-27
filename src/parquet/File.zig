@@ -33,17 +33,19 @@ pub fn read(gpa: std.mem.Allocator, source_const: anytype) !File {
         return error.MissingMagicFooter;
     }
 
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    const alloc = arena.allocator();
+
     const metadata_lenght = std.mem.readInt(u32, footer[0..METADATA_LENGHT_SIZE], .little);
     try source.seekTo(size - metadata_lenght - FOOTER_SIZE);
 
-    const metadata_buf = try gpa.alloc(u8, metadata_lenght);
-    defer gpa.free(metadata_buf);
+    const metadata_buf = try alloc.alloc(u8, metadata_lenght);
     _ = try reader.readNoEof(metadata_buf);
 
     var metadata_fbs = std.io.fixedBufferStream(metadata_buf);
     const metadata_reader = protocol_compact.StructReader(parquet_schema.FileMetaData);
-    var arena = std.heap.ArenaAllocator.init(gpa);
-    const metadata = try metadata_reader.read(arena.allocator(), metadata_fbs.reader());
+
+    const metadata = try metadata_reader.read(alloc, metadata_fbs.reader());
     return File{ .arena = arena, .metadata = metadata };
 }
 
