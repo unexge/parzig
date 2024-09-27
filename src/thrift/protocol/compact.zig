@@ -191,6 +191,7 @@ pub fn StructReader(comptime T: type) type {
 
     return struct {
         pub fn read(arena: std.mem.Allocator, reader: anytype) !T {
+            var fields_set = std.mem.zeroes([max_field_id]bool);
             var result: T = undefined;
             var last_field_id: i16 = 0;
             while (true) {
@@ -224,7 +225,10 @@ pub fn StructReader(comptime T: type) type {
                         continue;
                     }
 
-                    if (@as(usize, @intCast(field_id)) - 1 == i) {
+                    const field_id_idx: usize = @intCast(field_id - 1);
+                    if (field_id_idx == i) {
+                        fields_set[field_id_idx] = true;
+
                         switch (field_type) {
                             .boolean_true => {
                                 if (expected_field_type != bool) {
@@ -291,6 +295,13 @@ pub fn StructReader(comptime T: type) type {
                             .uuid => return error.UuidNotSupported,
                         }
                     }
+                }
+            }
+
+            inline for (fields, 0..) |field, i| {
+                const field_id_idx = comptime T.fieldId(@enumFromInt(i)) - 1;
+                if (!fields_set[field_id_idx] and @typeInfo(field.type) == .Optional) {
+                    @field(result, field.name) = null;
                 }
             }
 
