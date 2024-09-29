@@ -34,6 +34,7 @@ pub fn read(gpa: std.mem.Allocator, source_const: anytype) !File {
     }
 
     var arena = std.heap.ArenaAllocator.init(gpa);
+    errdefer arena.deinit();
     const alloc = arena.allocator();
 
     const metadata_lenght = std.mem.readInt(u32, footer[0..METADATA_LENGHT_SIZE], .little);
