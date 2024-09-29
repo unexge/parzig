@@ -65,13 +65,13 @@ pub fn ListReader(comptime E: type) type {
                 switch (elem_type) {
                     .bool => {
                         if (E != bool) {
-                            return error.ExpectedBool;
+                            return error.UnexpectedBool;
                         }
                         result[i] = readInt(i8, reader) == 1;
                     },
                     .i8, .i16, .i32, .i64 => {
                         if (@typeInfo(E) != .Int and @typeInfo(E) != .Enum) {
-                            return error.ExpectedInt;
+                            return error.UnexpectedInt;
                         }
 
                         result[i] = if (@typeInfo(E) == .Enum)
@@ -84,10 +84,10 @@ pub fn ListReader(comptime E: type) type {
                         switch (@typeInfo(E)) {
                             .Pointer => |*p| {
                                 if (p.size != .Slice or !p.is_const or p.child != u8) {
-                                    return error.ExpectedBinary;
+                                    return error.UnexpectedBinary;
                                 }
                             },
-                            else => return error.ExpectedBinary,
+                            else => return error.UnexpectedBinary,
                         }
 
                         result[i] = try readBinary(arena, reader);
@@ -96,11 +96,11 @@ pub fn ListReader(comptime E: type) type {
                         const inner_elem_type = switch (@typeInfo(E)) {
                             .Pointer => |*p| blk: {
                                 if (p.size != .Slice) {
-                                    return error.ExpectedList;
+                                    return error.UnexpectedList;
                                 }
                                 break :blk p.child;
                             },
-                            else => return error.ExpectedList,
+                            else => return error.UnexpectedList,
                         };
 
                         result[i] = try ListReader(inner_elem_type).read(arena, reader);
@@ -109,7 +109,7 @@ pub fn ListReader(comptime E: type) type {
                     .map => return error.MapNotSupported,
                     .@"struct" => {
                         if (@typeInfo(E) != .Struct and @typeInfo(E) != .Union) {
-                            return error.ExpectedStruct;
+                            return error.UnexpectedStruct;
                         }
 
                         result[i] = try StructReader(E).read(arena, reader);
@@ -232,19 +232,19 @@ pub fn StructReader(comptime T: type) type {
                         switch (field_type) {
                             .boolean_true => {
                                 if (expected_field_type != bool) {
-                                    return error.ExpectedBool;
+                                    return error.UnexpectedBool;
                                 }
                                 @field(result, field_name) = true;
                             },
                             .boolean_false => {
                                 if (expected_field_type != bool) {
-                                    return error.ExpectedBool;
+                                    return error.UnexpectedBool;
                                 }
                                 @field(result, field_name) = false;
                             },
                             .i8, .i16, .i32, .i64 => {
                                 if (@typeInfo(expected_field_type) != .Int and @typeInfo(expected_field_type) != .Enum) {
-                                    return error.ExpectedInt;
+                                    return error.UnexpectedInt;
                                 }
 
                                 @field(result, field_name) = if (@typeInfo(expected_field_type) == .Enum)
@@ -257,10 +257,10 @@ pub fn StructReader(comptime T: type) type {
                                 switch (@typeInfo(expected_field_type)) {
                                     .Pointer => |*p| {
                                         if (p.size != .Slice or !p.is_const or p.child != u8) {
-                                            return error.ExpectedBinary;
+                                            return error.UnexpectedBinary;
                                         }
                                     },
-                                    else => return error.ExpectedBinary,
+                                    else => return error.UnexpectedBinary,
                                 }
 
                                 @field(result, field_name) = try readBinary(arena, reader);
@@ -269,11 +269,11 @@ pub fn StructReader(comptime T: type) type {
                                 const elem_type = switch (@typeInfo(expected_field_type)) {
                                     .Pointer => |*p| blk: {
                                         if (p.size != .Slice) {
-                                            return error.ExpectedList;
+                                            return error.UnexpectedList;
                                         }
                                         break :blk p.child;
                                     },
-                                    else => return error.ExpectedList,
+                                    else => return error.UnexpectedList,
                                 };
 
                                 @field(result, field_name) = try ListReader(unwrapOptional(elem_type)).read(arena, reader);
@@ -282,7 +282,7 @@ pub fn StructReader(comptime T: type) type {
                             .map => return error.MapNotSupported,
                             .@"struct" => {
                                 if (@typeInfo(expected_field_type) != .Struct and @typeInfo(expected_field_type) != .Union) {
-                                    return error.ExpectedStruct;
+                                    return error.UnexpectedStruct;
                                 }
 
                                 const value = try StructReader(expected_field_type).read(arena, reader);
