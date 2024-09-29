@@ -1,4 +1,4 @@
-const File = @import("parquet/File.zig");
+pub const File = @import("parquet/File.zig");
 
 test {
     _ = File;

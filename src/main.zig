@@ -17,19 +17,29 @@ pub fn main() !void {
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 
-    const source = try file.readToEndAlloc(allocator, std.math.maxInt(u32));
-    defer allocator.free(source);
+    const source = std.io.StreamSource{ .file = file };
+    var parquet_file = try parzig.parquet.File.read(allocator, source);
+    defer parquet_file.deinit();
 
-    var document = try parzig.thrift.Document.init(allocator, source);
-    defer document.deinit();
+    std.debug.print("File Metadata:\n", .{});
+    std.debug.print("\tFormat version: {d}\n", .{parquet_file.metadata.version});
+    if (parquet_file.metadata.created_by) |created_by| {
+        std.debug.print("\tCreated by: {s}\n", .{created_by});
+    }
+    std.debug.print("\tNumber of rows: {d}\n", .{parquet_file.metadata.num_rows});
+    // There is always `root` in the schema, don't count it.
+    const num_columns = parquet_file.metadata.schema.len - 1;
+    std.debug.print("\tNumber of columns: {d}\n", .{num_columns});
+    std.debug.print("\tNumber of row groups: {d}\n", .{parquet_file.metadata.row_groups.len});
 
-    var root = try parzig.thrift.translate(allocator, &document);
-    defer root.deinit(allocator);
-    defer allocator.free(root.source);
+    const total_byte_size = blk: {
+        var total: i64 = 0;
+        for (parquet_file.metadata.row_groups) |rg| {
+            total += rg.total_byte_size;
+        }
+        break :blk total;
+    };
+    std.debug.print("\tTotal byte size of data: {d}\n", .{total_byte_size});
 
-    const formatted = try root.render(allocator);
-    defer allocator.free(formatted);
-
-    try std.io.getStdOut().writeAll(formatted);
     return std.process.cleanExit();
 }
