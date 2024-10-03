@@ -2,6 +2,7 @@ const std = @import("std");
 
 const parquet_schema = @import("../generated/parquet.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
+const decoding = @import("./decoding.zig");
 
 const File = @This();
 
@@ -12,9 +13,10 @@ const MIN_SIZE = MAGIC.len + FOOTER_SIZE;
 
 // TODO: Its probably better to track allocated memory properly.
 arena: std.heap.ArenaAllocator,
+source: std.io.StreamSource,
 metadata: parquet_schema.FileMetaData,
 
-pub fn read(gpa: std.mem.Allocator, source_const: anytype) !File {
+pub fn read(gpa: std.mem.Allocator, source_const: std.io.StreamSource) !File {
     var source = @constCast(&source_const);
     var reader = source.reader();
 
@@ -47,10 +49,69 @@ pub fn read(gpa: std.mem.Allocator, source_const: anytype) !File {
     const metadata_reader = protocol_compact.StructReader(parquet_schema.FileMetaData);
 
     const metadata = try metadata_reader.read(alloc, metadata_fbs.reader());
-    return File{ .arena = arena, .metadata = metadata };
+    return File{ .arena = arena, .source = source_const, .metadata = metadata };
+}
+
+pub fn rowGroup(self: *File, index: usize) !void {
+    const row_group = self.metadata.row_groups[index];
+    var source = self.source;
+
+    const page_header_reader = protocol_compact.StructReader(parquet_schema.PageHeader);
+
+    for (row_group.columns) |column_chunk| {
+        const column_metadata = column_chunk.meta_data orelse return error.MissingColumnMetadata;
+        if (column_metadata.codec != .UNCOMPRESSED) {
+            return error.CompressedDataNotSupported;
+        }
+
+        try source.seekTo(@intCast(column_metadata.data_page_offset));
+
+        const page_header = try page_header_reader.read(self.arena.allocator(), source.reader());
+        switch (page_header.type) {
+            .DATA_PAGE => {
+                const data_page = page_header.data_page_header.?;
+                const num_values: usize = @intCast(data_page.num_values);
+                // TODO: Parse repetition levels data.
+                // TODO: Pass correct `bit_width` for parsing definition levels data.
+                try decoding.decodeRleBitPackedHybrid(self.arena.allocator(), 1, source.reader());
+
+                std.debug.print("Path: {s}, Type: {any}\n", .{ column_metadata.path_in_schema[0], column_metadata.type });
+
+                switch (column_metadata.type) {
+                    .INT32 => {
+                        const values = try decoding.decodePlain(i32, self.arena.allocator(), num_values, source.reader());
+                        std.debug.print("Values: {any}\n", .{values});
+                    },
+                    .INT64 => {
+                        const values = try decoding.decodePlain(i64, self.arena.allocator(), num_values, source.reader());
+                        std.debug.print("Values: {any}\n", .{values});
+                    },
+                    .INT96 => {
+                        const values = try decoding.decodePlain(i96, self.arena.allocator(), num_values, source.reader());
+                        std.debug.print("Values: {any}\n", .{values});
+                    },
+                    .BYTE_ARRAY => {
+                        const values = try decoding.decodePlain([]u8, self.arena.allocator(), num_values, source.reader());
+                        std.debug.print("Values: {s}\n", .{values});
+                    },
+                    else => return error.UnsupportedType,
+                }
+            },
+            else => {
+                std.debug.print("Only `DATE_PAGE` is supported for now", .{});
+                return error.PageTypeNotSupported;
+            },
+        }
+    }
+
+    return error.TODO;
 }
 
 pub fn deinit(self: *File) void {
+    switch (self.source) {
+        .file => |*f| f.close(),
+        else => {},
+    }
     self.arena.deinit();
 }
 
@@ -72,11 +133,8 @@ test "missing metadata length" {
     try std.testing.expectError(error.IncorrectFile, read(std.testing.allocator, source));
 }
 
-test "reading a simple file metadata" {
-    const simple_file = try std.fs.cwd().openFile("testdata/simple.parquet", .{ .mode = .read_only });
-    defer simple_file.close();
-    const source = std.io.StreamSource{ .file = simple_file };
-    var file = try read(std.testing.allocator, source);
+test "reading metadata of a simple file" {
+    var file = try readTestFile("testdata/simple.parquet");
     defer file.deinit();
 
     try std.testing.expectEqual(1, file.metadata.version);
@@ -95,4 +153,17 @@ test "reading a simple file metadata" {
 
     try std.testing.expectEqual(232, file.metadata.row_groups[0].total_byte_size);
     try std.testing.expectEqual(5, file.metadata.row_groups[0].num_rows);
+}
+
+test "reading a row group of a simple file" {
+    var file = try readTestFile("testdata/simple.parquet");
+    defer file.deinit();
+
+    try file.rowGroup(0);
+}
+
+fn readTestFile(path: []const u8) !File {
+    const simple_file = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
+    const source = std.io.StreamSource{ .file = simple_file };
+    return read(std.testing.allocator, source);
 }

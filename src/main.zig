@@ -14,9 +14,7 @@ pub fn main() !void {
 
     std.debug.print("Parsing {s}\n", .{path});
 
-    var file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
-
+    const file = try std.fs.cwd().openFile(path, .{});
     const source = std.io.StreamSource{ .file = file };
     var parquet_file = try parzig.parquet.File.read(allocator, source);
     defer parquet_file.deinit();
@@ -40,6 +38,10 @@ pub fn main() !void {
         break :blk total;
     };
     std.debug.print("\tTotal byte size of data: {d}\n", .{total_byte_size});
+
+    std.debug.print("-------\n", .{});
+
+    _ = parquet_file.rowGroup(0) catch null;
 
     return std.process.cleanExit();
 }
