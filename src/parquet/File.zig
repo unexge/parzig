@@ -64,16 +64,29 @@ pub fn rowGroup(self: *File, index: usize) !void {
             return error.CompressedDataNotSupported;
         }
 
+        const levels = try self.repAndDefLevelOfColumn(column_metadata.path_in_schema);
+        const rep_level = levels[0];
+        const def_level = levels[1];
+
         try source.seekTo(@intCast(column_metadata.data_page_offset));
 
         const page_header = try page_header_reader.read(self.arena.allocator(), source.reader());
         switch (page_header.type) {
             .DATA_PAGE => {
+                const reader = source.reader();
+
                 const data_page = page_header.data_page_header.?;
                 const num_values: usize = @intCast(data_page.num_values);
-                // TODO: Parse repetition levels data.
-                // TODO: Pass correct `bit_width` for parsing definition levels data.
-                try decoding.decodeRleBitPackedHybrid(self.arena.allocator(), 1, source.reader());
+
+                if (rep_level > 0) {
+                    const values = try self.readLevelDataV1(reader, rep_level, num_values);
+                    defer self.arena.allocator().free(values);
+                }
+
+                if (def_level > 0) {
+                    const values = try self.readLevelDataV1(reader, def_level, num_values);
+                    defer self.arena.allocator().free(values);
+                }
 
                 std.debug.print("Path: {s}, Type: {any}\n", .{ column_metadata.path_in_schema[0], column_metadata.type });
 
@@ -113,6 +126,43 @@ pub fn deinit(self: *File) void {
         else => {},
     }
     self.arena.deinit();
+}
+
+fn repAndDefLevelOfColumn(self: *File, path: [][]const u8) !std.meta.Tuple(&[_]type{ u8, u8 }) {
+    if (path.len == 0) {
+        return error.MissingField;
+    }
+    if (path.len > 1) {
+        return error.NestedFieldsAreNotSupported;
+    }
+
+    const field = for (self.metadata.schema) |elem| {
+        if (std.mem.eql(u8, elem.name, path[0])) {
+            break elem;
+        }
+    } else return error.UnkonwnField;
+
+    const repetition_type = field.repetition_type orelse parquet_schema.FieldRepetitionType.OPTIONAL;
+
+    return .{ if (repetition_type == .REPEATED) 1 else 0, 1 };
+}
+
+fn readLevelDataV1(self: *File, reader: anytype, bit_width: u8, num_values: usize) ![]u16 {
+    const lenght = try reader.readVarInt(u32, .little, 4);
+    if (lenght == 0) return error.EmptyBuffer;
+
+    const buf = try self.arena.allocator().alloc(u8, @as(usize, @intCast(lenght)));
+    defer self.arena.allocator().free(buf);
+    try reader.readNoEof(buf);
+    var fbs = std.io.fixedBufferStream(buf);
+
+    const values = try self.arena.allocator().alloc(u16, num_values);
+    try decoding.decodeRleBitPackedHybrid(u16, values, bit_width, fbs.reader());
+    return values;
+}
+
+test {
+    _ = decoding;
 }
 
 test "missing PAR1 header" {
