@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub fn decodePlain(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
     const buf = try gpa.alloc(T, len);
-    const is_byte_array = T == []u8;
+    const is_byte_array = T == []const u8;
     for (0..len) |i| {
         if (is_byte_array) {
             const num_bytes = try reader.readInt(u32, .little);

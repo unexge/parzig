@@ -41,7 +41,19 @@ pub fn main() !void {
 
     std.debug.print("-------\n", .{});
 
-    _ = parquet_file.rowGroup(0) catch null;
+    var rg = parquet_file.rowGroup(0);
+
+    const foo = parquet_file.metadata.schema[1];
+    std.debug.print("{s} - {any}, values:\n", .{ foo.name, foo.type.? });
+    std.debug.print("{any}\n\n", .{try rg.readColumn(i64, 0)});
+
+    const bar = parquet_file.metadata.schema[2];
+    std.debug.print("{s} - {any}, values:\n", .{ bar.name, bar.type.? });
+    std.debug.print("{any}\n\n", .{try rg.readColumn(i64, 1)});
+
+    const ham = parquet_file.metadata.schema[3];
+    std.debug.print("{s} - {any}, values:\n", .{ ham.name, ham.type.? });
+    std.debug.print("{s}\n", .{try rg.readColumn([]const u8, 2)});
 
     return std.process.cleanExit();
 }

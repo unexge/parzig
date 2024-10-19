@@ -3,6 +3,7 @@ const std = @import("std");
 const parquet_schema = @import("../generated/parquet.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
 const decoding = @import("./decoding.zig");
+const rowGroupReader = @import("./rowGroupReader.zig");
 
 const File = @This();
 
@@ -15,6 +16,15 @@ const MIN_SIZE = MAGIC.len + FOOTER_SIZE;
 arena: std.heap.ArenaAllocator,
 source: std.io.StreamSource,
 metadata: parquet_schema.FileMetaData,
+
+pub const RowGroup = struct {
+    file: *File,
+    rg: parquet_schema.RowGroup,
+
+    pub fn readColumn(self: *RowGroup, comptime T: type, index: usize) ![]T {
+        return rowGroupReader.readColumn(T, self.file, &self.rg.columns[index]);
+    }
+};
 
 pub fn read(gpa: std.mem.Allocator, source_const: std.io.StreamSource) !File {
     var source = @constCast(&source_const);
@@ -52,72 +62,8 @@ pub fn read(gpa: std.mem.Allocator, source_const: std.io.StreamSource) !File {
     return File{ .arena = arena, .source = source_const, .metadata = metadata };
 }
 
-pub fn rowGroup(self: *File, index: usize) !void {
-    const row_group = self.metadata.row_groups[index];
-    var source = self.source;
-
-    const page_header_reader = protocol_compact.StructReader(parquet_schema.PageHeader);
-
-    for (row_group.columns) |column_chunk| {
-        const column_metadata = column_chunk.meta_data orelse return error.MissingColumnMetadata;
-        if (column_metadata.codec != .UNCOMPRESSED) {
-            return error.CompressedDataNotSupported;
-        }
-
-        const levels = try self.repAndDefLevelOfColumn(column_metadata.path_in_schema);
-        const rep_level = levels[0];
-        const def_level = levels[1];
-
-        try source.seekTo(@intCast(column_metadata.data_page_offset));
-
-        const page_header = try page_header_reader.read(self.arena.allocator(), source.reader());
-        switch (page_header.type) {
-            .DATA_PAGE => {
-                const reader = source.reader();
-
-                const data_page = page_header.data_page_header.?;
-                const num_values: usize = @intCast(data_page.num_values);
-
-                if (rep_level > 0) {
-                    const values = try self.readLevelDataV1(reader, rep_level, num_values);
-                    defer self.arena.allocator().free(values);
-                }
-
-                if (def_level > 0) {
-                    const values = try self.readLevelDataV1(reader, def_level, num_values);
-                    defer self.arena.allocator().free(values);
-                }
-
-                std.debug.print("Path: {s}, Type: {any}\n", .{ column_metadata.path_in_schema[0], column_metadata.type });
-
-                switch (column_metadata.type) {
-                    .INT32 => {
-                        const values = try decoding.decodePlain(i32, self.arena.allocator(), num_values, source.reader());
-                        std.debug.print("Values: {any}\n", .{values});
-                    },
-                    .INT64 => {
-                        const values = try decoding.decodePlain(i64, self.arena.allocator(), num_values, source.reader());
-                        std.debug.print("Values: {any}\n", .{values});
-                    },
-                    .INT96 => {
-                        const values = try decoding.decodePlain(i96, self.arena.allocator(), num_values, source.reader());
-                        std.debug.print("Values: {any}\n", .{values});
-                    },
-                    .BYTE_ARRAY => {
-                        const values = try decoding.decodePlain([]u8, self.arena.allocator(), num_values, source.reader());
-                        std.debug.print("Values: {s}\n", .{values});
-                    },
-                    else => return error.UnsupportedType,
-                }
-            },
-            else => {
-                std.debug.print("Only `DATE_PAGE` is supported for now", .{});
-                return error.PageTypeNotSupported;
-            },
-        }
-    }
-
-    return error.TODO;
+pub fn rowGroup(self: *File, index: usize) RowGroup {
+    return RowGroup{ .file = self, .rg = self.metadata.row_groups[index] };
 }
 
 pub fn deinit(self: *File) void {
@@ -128,7 +74,7 @@ pub fn deinit(self: *File) void {
     self.arena.deinit();
 }
 
-fn repAndDefLevelOfColumn(self: *File, path: [][]const u8) !std.meta.Tuple(&[_]type{ u8, u8 }) {
+pub fn repAndDefLevelOfColumn(self: *File, path: [][]const u8) !std.meta.Tuple(&[_]type{ u8, u8 }) {
     if (path.len == 0) {
         return error.MissingField;
     }
@@ -147,7 +93,7 @@ fn repAndDefLevelOfColumn(self: *File, path: [][]const u8) !std.meta.Tuple(&[_]t
     return .{ if (repetition_type == .REPEATED) 1 else 0, 1 };
 }
 
-fn readLevelDataV1(self: *File, reader: anytype, bit_width: u8, num_values: usize) ![]u16 {
+pub fn readLevelDataV1(self: *File, reader: anytype, bit_width: u8, num_values: usize) ![]u16 {
     const lenght = try reader.readVarInt(u32, .little, 4);
     if (lenght == 0) return error.EmptyBuffer;
 
@@ -209,7 +155,10 @@ test "reading a row group of a simple file" {
     var file = try readTestFile("testdata/simple.parquet");
     defer file.deinit();
 
-    try file.rowGroup(0);
+    var rg = file.rowGroup(0);
+    try std.testing.expectEqualSlices(i64, &[_]i64{ 1, 2, 3, 4, 5 }, try rg.readColumn(i64, 0));
+    try std.testing.expectEqualSlices(i64, &[_]i64{ 6, 7, 8, 9, 10 }, try rg.readColumn(i64, 1));
+    try std.testing.expectEqualDeep(&[_][]const u8{ "a", "b", "c", "d", "e" }, try rg.readColumn([]const u8, 2));
 }
 
 fn readTestFile(path: []const u8) !File {
