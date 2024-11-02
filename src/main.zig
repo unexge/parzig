@@ -43,17 +43,24 @@ pub fn main() !void {
 
     var rg = parquet_file.rowGroup(0);
 
-    const foo = parquet_file.metadata.schema[1];
-    std.debug.print("{s} - {any}, values:\n", .{ foo.name, foo.type.? });
-    std.debug.print("{any}\n\n", .{try rg.readColumn(i64, 0)});
+    inline for (.{
+        .{ "question", 0, []const u8 },
+        .{ "answer", 1, []const u8 },
+    }) |elem| {
+        const key, const idx, const ty = elem;
+        const data = try rg.readColumn(ty, idx);
 
-    const bar = parquet_file.metadata.schema[2];
-    std.debug.print("{s} - {any}, values:\n", .{ bar.name, bar.type.? });
-    std.debug.print("{any}\n\n", .{try rg.readColumn(i64, 1)});
+        std.debug.print("{s} - {any}, values:\n", .{ key, ty });
 
-    const ham = parquet_file.metadata.schema[3];
-    std.debug.print("{s} - {any}, values:\n", .{ ham.name, ham.type.? });
-    std.debug.print("{s}\n", .{try rg.readColumn([]const u8, 2)});
+        if (data.len > 10) {
+            std.debug.print("{s}\n", .{data[0..10]});
+            std.debug.print("..\n", .{});
+            std.debug.print("..\n", .{});
+            std.debug.print("{d} more\n", .{data.len - 10});
+        } else {
+            std.debug.print("{s}\n\n", .{data});
+        }
+    }
 
     return std.process.cleanExit();
 }

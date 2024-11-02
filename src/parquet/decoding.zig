@@ -16,6 +16,13 @@ pub fn decodePlain(comptime T: type, gpa: std.mem.Allocator, len: usize, reader:
     return buf;
 }
 
+pub fn decodeRleDictionary(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
+    const bit_width = try reader.readByte();
+    const buf = try gpa.alloc(T, len);
+    try decodeRleBitPackedHybrid(T, buf, bit_width, reader);
+    return buf;
+}
+
 pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reader: anytype) !void {
     var bit_reader = std.io.bitReader(.little, reader);
     var pos: usize = 0;
