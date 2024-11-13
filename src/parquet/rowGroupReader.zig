@@ -2,6 +2,7 @@ const std = @import("std");
 
 const parquet_schema = @import("../generated/parquet.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
+const compress = @import("../compress.zig");
 const decoding = @import("./decoding.zig");
 const File = @import("./File.zig");
 
@@ -41,7 +42,7 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
             const data_page = page_header.data_page_header.?;
             const num_values: usize = @intCast(data_page.num_values);
 
-            const decoder = try decoderForPage(file.source.reader(), metadata.codec, page_header.compressed_page_size);
+            const decoder = try decoderForPage(arena, file.source.reader(), metadata.codec, page_header.compressed_page_size);
 
             if (rep_level > 0) {
                 const values = try file.readLevelDataV1(decoder, rep_level, num_values);
@@ -62,7 +63,7 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                     const dict_page_header = try page_header_reader.read(arena, source.reader());
                     const header = dict_page_header.dictionary_page_header.?;
 
-                    const decoder_for_dict = try decoderForPage(file.source.reader(), metadata.codec, dict_page_header.compressed_page_size);
+                    const decoder_for_dict = try decoderForPage(arena, file.source.reader(), metadata.codec, dict_page_header.compressed_page_size);
 
                     const dict_values = try decoding.decodePlain(T, arena, @intCast(header.num_values), decoder_for_dict);
 
@@ -85,14 +86,21 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
     }
 }
 
-inline fn decoderForPage(inner_reader: anytype, codec: parquet_schema.CompressionCodec, size: i32) !std.io.AnyReader {
+inline fn decoderForPage(gpa: std.mem.Allocator, inner_reader: anytype, codec: parquet_schema.CompressionCodec, size: i32) !std.io.AnyReader {
     var limited_reader = std.io.limitedReader(inner_reader, @intCast(size));
     return switch (codec) {
         .GZIP => blk: {
             var decompressor = std.compress.gzip.decompressor(limited_reader.reader());
             break :blk decompressor.reader().any();
         },
+        .SNAPPY => blk: {
+            var decompressor = compress.snappy.decoder(limited_reader.reader(), gpa);
+            break :blk decompressor.reader().any();
+        },
         .UNCOMPRESSED => limited_reader.reader().any(),
-        else => return error.UnsupportedCoded,
+        else => {
+            std.debug.print("Unsupported codec: {any}\n", .{codec});
+            return error.UnsupportedCodec;
+        },
     };
 }
