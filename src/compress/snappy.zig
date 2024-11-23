@@ -94,10 +94,18 @@ pub fn Decoder(comptime Inner: type) type {
 
                         const copy_remaining = copy.*.end - copy.*.start;
                         const buffer_remaining = buffer.len - buffer_pos;
-                        const to_read = @min(copy_remaining, buffer_remaining);
+                        var to_read = @min(copy_remaining, buffer_remaining);
                         std.debug.assert(to_read <= 64);
 
-                        const src = self.buffer[copy.*.start..(copy.*.start + to_read)];
+                        const start_pos = copy.*.start;
+                        var end_pos = start_pos + to_read;
+                        // Copy operation passes the end of the buffer, so we need to limit it.
+                        if (end_pos > self.buffer_pos) {
+                            end_pos = self.buffer_pos;
+                            to_read = end_pos - start_pos;
+                        }
+
+                        const src = self.buffer[start_pos..end_pos];
 
                         @memcpy(buffer[buffer_pos..(buffer_pos + to_read)], src);
                         std.mem.copyForwards(u8, @constCast(self.buffer[self.buffer_pos..(self.buffer_pos + to_read)]), src);
@@ -235,9 +243,11 @@ test "copy 4-byte" {
 test "golden" {
     const compressed_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt.rawsnappy", .{ .mode = .read_only });
     const compressed = try compressed_file.reader().readAllAlloc(std.testing.allocator, std.math.maxInt(usize));
+    defer std.testing.allocator.free(compressed);
 
     const source_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt", .{ .mode = .read_only });
     const source = try source_file.reader().readAllAlloc(std.testing.allocator, std.math.maxInt(usize));
+    defer std.testing.allocator.free(source);
 
     expectDecoded(compressed, source);
 }
