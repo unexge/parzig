@@ -79,8 +79,32 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 },
             };
         },
+        .DATA_PAGE_V2 => {
+            const data_page = page_header.data_page_header_v2.?;
+            const num_values: usize = @intCast(data_page.num_values);
+
+            const decoder = try decoderForPage(arena, file.source.reader(), metadata.codec, page_header.compressed_page_size);
+
+            if (rep_level > 0) {
+                const values = try file.readLevelDataV2(decoder, rep_level, num_values, @intCast(data_page.repetition_levels_byte_length));
+                defer arena.free(values);
+            }
+
+            if (def_level > 0) {
+                const values = try file.readLevelDataV2(decoder, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
+                defer arena.free(values);
+            }
+
+            return switch (data_page.encoding) {
+                .DELTA_BINARY_PACKED => decoding.decodeDeltaBinaryPacked(T, arena, num_values, decoder),
+                else => {
+                    std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
+                    return error.UnsupportedEncoding;
+                },
+            };
+        },
         else => {
-            std.debug.print("Only `DATE_PAGE` is supported for now", .{});
+            std.debug.print("{any} is not supported\n", .{page_header.type});
             return error.PageTypeNotSupported;
         },
     }

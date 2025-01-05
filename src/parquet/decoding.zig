@@ -1,4 +1,5 @@
 const std = @import("std");
+const protocol_compact = @import("../thrift.zig").protocol_compact;
 
 pub fn decodePlain(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
     const buf = try gpa.alloc(T, len);
@@ -45,6 +46,89 @@ pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reade
             pos += len;
         }
     }
+}
+
+pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
+    if (T != i32 and T != i64) {
+        return error.UnsupportedType;
+    }
+
+    const block_size = try std.leb.readULEB128(usize, reader);
+    const miniblock_count = try std.leb.readULEB128(usize, reader);
+    const total_count = try std.leb.readULEB128(usize, reader);
+    if (total_count != len) {
+        return error.UnexpectedValueCount;
+    }
+
+    const first_value = try protocol_compact.readZigZagInt(T, reader);
+
+    const values_per_miniblock = block_size / miniblock_count;
+    if (values_per_miniblock % 32 != 0) {
+        return error.InvalidMiniblockSize;
+    }
+
+    const result = try gpa.alloc(T, len);
+    result[0] = first_value;
+
+    var values_read: usize = 1;
+    var last_value = first_value;
+
+    while (values_read < len) {
+        const min_delta = try protocol_compact.readZigZagInt(T, reader);
+
+        const bit_widths = try gpa.alloc(u8, miniblock_count);
+        defer gpa.free(bit_widths);
+        _ = try reader.readAll(bit_widths);
+
+        var bit_reader = std.io.bitReader(.little, reader);
+
+        for (bit_widths) |bit_width| {
+            if (bit_width == 0) {
+                const end = @min(values_read + values_per_miniblock, len);
+                while (values_read < end) : (values_read += 1) {
+                    // Allow wrapping addition for zero-width blocks
+                    last_value = @addWithOverflow(last_value, min_delta)[0];
+                    result[values_read] = last_value;
+                }
+            } else {
+                const end = @min(values_read + values_per_miniblock, len);
+                while (values_read < end) : (values_read += 1) {
+                    // Read the bits
+                    var raw_value: u64 = 0;
+                    var bits_read: u8 = 0;
+                    while (bits_read < bit_width) {
+                        const bits_to_read = @min(8, bit_width - bits_read);
+                        const byte = try bit_reader.readBitsNoEof(u8, bits_to_read);
+                        raw_value |= @as(u64, byte) << @as(u6, @intCast(bits_read));
+                        bits_read += bits_to_read;
+                    }
+
+                    // Handle sign extension if needed
+                    if (@typeInfo(T).Int.signedness == .signed and bit_width < 64) {
+                        const sign_bit = @as(u64, 1) << @as(u6, @intCast(bit_width - 1));
+                        if (raw_value & sign_bit != 0) {
+                            raw_value |= (~@as(u64, 0)) << @as(u6, @intCast(bit_width));
+                        }
+                    }
+
+                    // Convert to target type safely
+                    const packed_value = if (@typeInfo(T).Int.signedness == .signed)
+                        std.math.cast(T, @as(i64, @bitCast(raw_value))) orelse return error.ValueOutOfRange
+                    else
+                        std.math.cast(T, raw_value) orelse return error.ValueOutOfRange;
+
+                    // Allow wrapping addition for delta encoding
+                    const delta = @addWithOverflow(packed_value, min_delta)[0];
+                    last_value = @addWithOverflow(last_value, delta)[0];
+                    result[values_read] = last_value;
+                }
+            }
+
+            if (values_read >= len) break;
+        }
+    }
+
+    return result;
 }
 
 // Tests are borrowed from https://github.com/apache/arrow-rs/blob/ac51632af79b01738dbc87a27c4a95512cde2faf/parquet/src/encodings/rle.rs#L526

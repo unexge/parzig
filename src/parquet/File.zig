@@ -107,6 +107,17 @@ pub fn readLevelDataV1(self: *File, reader: anytype, bit_width: u8, num_values: 
     return values;
 }
 
+pub fn readLevelDataV2(self: *File, reader: anytype, bit_width: u8, num_values: usize, lenght: u32) ![]u16 {
+    const buf = try self.arena.allocator().alloc(u8, @as(usize, @intCast(lenght)));
+    defer self.arena.allocator().free(buf);
+    try reader.readNoEof(buf);
+    var fbs = std.io.fixedBufferStream(buf);
+
+    const values = try self.arena.allocator().alloc(u16, num_values);
+    try decoding.decodeRleBitPackedHybrid(u16, values, bit_width, fbs.reader());
+    return values;
+}
+
 test {
     _ = decoding;
 }

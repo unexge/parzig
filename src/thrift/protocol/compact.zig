@@ -1,11 +1,20 @@
 const std = @import("std");
 
-pub fn readInt(comptime T: type, reader: anytype) !T {
+pub fn readZigZagInt(comptime T: type, reader: anytype) !T {
     if (@sizeOf(T) > @sizeOf(i64)) {
         @compileError("Maximum 64-bit integers are supported");
     }
-    const num = try std.leb.readULEB128(i64, reader);
-    return @intCast((num >> 1) ^ -(num & 1));
+    const unsigned = try std.leb.readULEB128(u64, reader);
+    const decoded = if (unsigned & 1 == 0)
+        @as(i128, @intCast(unsigned >> 1))
+    else
+        ~@as(i128, @intCast(unsigned >> 1));
+
+    if (decoded > std.math.maxInt(T) or decoded < std.math.minInt(T)) {
+        return error.Overflow;
+    }
+
+    return @intCast(decoded);
 }
 
 pub fn readBinary(arena: std.mem.Allocator, reader: anytype) ![]const u8 {
@@ -53,7 +62,7 @@ pub fn ListReader(comptime E: type) type {
 
             const size_short: u4 = @truncate(header >> 4);
             const size: usize = @intCast(if (size_short == LONG_FORM)
-                try readInt(i32, reader)
+                try std.leb.readULEB128(i32, reader)
             else
                 size_short);
 
@@ -67,7 +76,7 @@ pub fn ListReader(comptime E: type) type {
                         if (E != bool) {
                             return error.UnexpectedBool;
                         }
-                        result[i] = readInt(i8, reader) == 1;
+                        result[i] = readZigZagInt(i8, reader) == 1;
                     },
                     .i8, .i16, .i32, .i64 => {
                         if (@typeInfo(E) != .Int and @typeInfo(E) != .Enum) {
@@ -75,9 +84,9 @@ pub fn ListReader(comptime E: type) type {
                         }
 
                         result[i] = if (@typeInfo(E) == .Enum)
-                            @enumFromInt(try readInt(i32, reader))
+                            @enumFromInt(try readZigZagInt(i32, reader))
                         else
-                            try readInt(E, reader);
+                            try readZigZagInt(E, reader);
                     },
                     .double => return error.DoubleNotSupported,
                     .binary => {
@@ -202,7 +211,7 @@ pub fn StructReader(comptime T: type) type {
 
                 const field_id_delta: u4 = @truncate(header >> 4);
                 const field_id = if (field_id_delta == 0)
-                    try readInt(i16, reader)
+                    try readZigZagInt(i16, reader)
                 else
                     last_field_id + field_id_delta;
 
@@ -244,13 +253,14 @@ pub fn StructReader(comptime T: type) type {
                             },
                             .i8, .i16, .i32, .i64 => {
                                 if (@typeInfo(expected_field_type) != .Int and @typeInfo(expected_field_type) != .Enum) {
+                                    std.debug.print("Unexpected {any}\n", .{expected_field_type});
                                     return error.UnexpectedInt;
                                 }
 
                                 @field(result, field_name) = if (@typeInfo(expected_field_type) == .Enum)
-                                    @enumFromInt(try readInt(i32, reader))
+                                    @enumFromInt(try readZigZagInt(i32, reader))
                                 else
-                                    try readInt(expected_field_type, reader);
+                                    try readZigZagInt(expected_field_type, reader);
                             },
                             .double => return error.DoubleNotSupported,
                             .binary => {
