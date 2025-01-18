@@ -41,26 +41,37 @@ pub fn main() !void {
 
     std.debug.print("-------\n", .{});
 
-    var rg = parquet_file.rowGroup(0);
+    for (parquet_file.metadata.row_groups, 0..) |rg_metadata, rg_idx| {
+        var rg = parquet_file.rowGroup(rg_idx);
 
-    inline for (.{
-        .{ "question", 0, []const u8 },
-        .{ "answer", 1, []const u8 },
-    }) |elem| {
-        const key, const idx, const ty = elem;
-        const data = try rg.readColumn(ty, idx);
-
-        std.debug.print("{s} - {any}, values:\n", .{ key, ty });
-
-        if (data.len > 10) {
-            std.debug.print("{s}\n", .{data[0..10]});
-            std.debug.print("..\n", .{});
-            std.debug.print("..\n", .{});
-            std.debug.print("{d} more\n", .{data.len - 10});
-        } else {
-            std.debug.print("{s}\n\n", .{data});
+        for (rg_metadata.columns, 0..) |column, i| {
+            const key = column.meta_data.?.path_in_schema;
+            const ty = column.meta_data.?.type;
+            std.debug.print("{s} - {any}, values:\n", .{ key, ty });
+            switch (try rg.readColumnDynamic(i)) {
+                .boolean => |data| printValues(bool, data),
+                .int32 => |data| printValues(i32, data),
+                .int64 => |data| printValues(i64, data),
+                .int96 => |data| printValues(i96, data),
+                .float => |data| printValues(f32, data),
+                .double => |data| printValues(f64, data),
+                .byte_array => |data| printValues([]const u8, data),
+                .fixed_len_byte_array => |data| printValues([]const u8, data),
+            }
         }
     }
 
     return std.process.cleanExit();
+}
+
+fn printValues(comptime T: type, data: []T) void {
+    const fmt_specifier = if (T == []const u8) "{s}" else "{any}";
+    if (data.len > 10) {
+        std.debug.print(fmt_specifier ++ "\n", .{data[0..10]});
+        std.debug.print("..\n", .{});
+        std.debug.print("..\n", .{});
+        std.debug.print("{d} more\n", .{data.len - 10});
+    } else {
+        std.debug.print(fmt_specifier ++ "\n\n", .{data});
+    }
 }

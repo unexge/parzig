@@ -3,6 +3,7 @@ const std = @import("std");
 const parquet_schema = @import("../generated/parquet.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
 const decoding = @import("./decoding.zig");
+const dynamic = @import("./dynamic.zig");
 const rowGroupReader = @import("./rowGroupReader.zig");
 
 const File = @This();
@@ -23,6 +24,10 @@ pub const RowGroup = struct {
 
     pub fn readColumn(self: *RowGroup, comptime T: type, index: usize) ![]T {
         return rowGroupReader.readColumn(T, self.file, &self.rg.columns[index]);
+    }
+
+    pub fn readColumnDynamic(self: *RowGroup, index: usize) !dynamic.Values {
+        return dynamic.readColumn(self.file, &self.rg.columns[index]);
     }
 };
 
@@ -170,6 +175,16 @@ test "reading a row group of a simple file" {
     try std.testing.expectEqualSlices(i64, &[_]i64{ 1, 2, 3, 4, 5 }, try rg.readColumn(i64, 0));
     try std.testing.expectEqualSlices(i64, &[_]i64{ 6, 7, 8, 9, 10 }, try rg.readColumn(i64, 1));
     try std.testing.expectEqualDeep(&[_][]const u8{ "a", "b", "c", "d", "e" }, try rg.readColumn([]const u8, 2));
+}
+
+test "reading a row group of a simple file with dynamic types" {
+    var file = try readTestFile("testdata/simple.parquet");
+    defer file.deinit();
+
+    var rg = file.rowGroup(0);
+    try std.testing.expectEqualSlices(i64, &[_]i64{ 1, 2, 3, 4, 5 }, (try rg.readColumnDynamic(0)).int64);
+    try std.testing.expectEqualSlices(i64, &[_]i64{ 6, 7, 8, 9, 10 }, (try rg.readColumnDynamic(1)).int64);
+    try std.testing.expectEqualDeep(&[_][]const u8{ "a", "b", "c", "d", "e" }, (try rg.readColumnDynamic(2)).byte_array);
 }
 
 test "reading gzipped file" {
