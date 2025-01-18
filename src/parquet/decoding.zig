@@ -82,24 +82,28 @@ pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: us
     var read: usize = 1;
     var current_value = first_value;
 
-    values: while (value_count > read) {
+    while (value_count > read) {
         const min_delta = try protocol_compact.readZigZagInt(T, reader);
         try reader.readNoEof(bit_widths);
 
         var bit_reader = std.io.bitReader(.little, reader);
 
         for (bit_widths) |bit_width| {
+            if (read == value_count) {
+                break;
+            }
+
             for (0..miniblock_value_count) |_| {
                 const delta: T = @truncate(try bit_reader.readBitsNoEof(i256, bit_width));
+                if (read == value_count) {
+                    continue;
+                }
+
                 const total_delta = @addWithOverflow(delta, min_delta);
                 const new_val = @addWithOverflow(current_value, total_delta[0]);
                 current_value = new_val[0];
                 result[read] = current_value;
                 read += 1;
-
-                if (read >= value_count) {
-                    break :values;
-                }
             }
         }
     }
