@@ -4,6 +4,24 @@ const parzig = @import("parzig");
 const File = parzig.parquet.File;
 const testing = std.testing;
 
+test "delta length byte array" {
+    var file = try readTestFile("testdata/parquet-testing/data/delta_length_byte_array.parquet");
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+
+    const expected = comptime blk: {
+        var arr: [1000][]const u8 = undefined;
+        for (0..1000) |i| {
+            arr[i] = std.fmt.comptimePrint("apple_banana_mango{}", .{i * i});
+        }
+        break :blk arr;
+    };
+
+    var rg = file.rowGroup(0);
+    try testing.expectEqualDeep(&expected, (try rg.readColumnDynamic(0)).byte_array);
+}
+
 test "delta binary packed" {
     // Generated with this convoluted Python one-liner:
     // "[_]i64{" + "},[_]i64{".join([",".join([str(x[0]) for x in pl.read_csv("./testdata/parquet-testing/data/delta_binary_packed_expect.csv").select(c).iter_rows()]) for c in df.columns]) + "}"

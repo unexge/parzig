@@ -83,20 +83,23 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
             const data_page = page_header.data_page_header_v2.?;
             const num_values: usize = @intCast(data_page.num_values);
 
-            const decoder = try decoderForPage(arena, file.source.reader(), metadata.codec, page_header.compressed_page_size);
+            const reader = file.source.reader();
 
             if (rep_level > 0) {
-                const values = try file.readLevelDataV2(decoder, rep_level, num_values, @intCast(data_page.repetition_levels_byte_length));
+                const values = try file.readLevelDataV2(reader, rep_level, num_values, @intCast(data_page.repetition_levels_byte_length));
                 defer arena.free(values);
             }
 
             if (def_level > 0) {
-                const values = try file.readLevelDataV2(decoder, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
+                const values = try file.readLevelDataV2(reader, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
                 defer arena.free(values);
             }
 
+            const decoder = try decoderForPage(arena, reader, metadata.codec, page_header.compressed_page_size);
+
             return switch (data_page.encoding) {
                 .DELTA_BINARY_PACKED => decoding.decodeDeltaBinaryPacked(T, arena, num_values, decoder),
+                .DELTA_LENGTH_BYTE_ARRAY => decoding.decodeDeltaLengthByteArray(T, arena, num_values, decoder),
                 else => {
                     std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
                     return error.UnsupportedEncoding;
@@ -119,6 +122,11 @@ inline fn decoderForPage(gpa: std.mem.Allocator, inner_reader: anytype, codec: p
         },
         .SNAPPY => blk: {
             var decompressor = compress.snappy.decoder(limited_reader.reader(), gpa);
+            break :blk decompressor.reader().any();
+        },
+        .ZSTD => blk: {
+            const window_buffer = try gpa.alloc(u8, std.compress.zstd.DecompressorOptions.default_window_buffer_len);
+            var decompressor = std.compress.zstd.decompressor(limited_reader.reader(), .{ .verify_checksum = false, .window_buffer = window_buffer });
             break :blk decompressor.reader().any();
         },
         .UNCOMPRESSED => limited_reader.reader().any(),

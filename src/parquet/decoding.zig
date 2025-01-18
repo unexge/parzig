@@ -111,6 +111,34 @@ pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: us
     return result;
 }
 
+pub fn decodeDeltaLengthByteArray(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
+    if (T != []const u8) {
+        return error.UnsupportedType;
+    }
+
+    const lengths = try decodeDeltaBinaryPacked(i32, gpa, len, reader);
+    var total_length: usize = 0;
+    for (lengths) |length| {
+        total_length += @intCast(length);
+    }
+
+    const buf = try gpa.alloc(u8, total_length);
+    const read = try reader.readAll(buf);
+    if (read != total_length) {
+        return error.MissingData;
+    }
+
+    const values = try gpa.alloc(T, len);
+    var pos: usize = 0;
+    for (lengths, 0..) |length, i| {
+        const start = pos;
+        pos += @intCast(length);
+        values[i] = buf[start..pos];
+    }
+
+    return values;
+}
+
 // Tests are borrowed from https://github.com/apache/arrow-rs/blob/ac51632af79b01738dbc87a27c4a95512cde2faf/parquet/src/encodings/rle.rs#L526
 
 test "rle decode i32" {
