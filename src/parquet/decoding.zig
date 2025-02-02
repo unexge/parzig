@@ -69,6 +69,7 @@ pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: us
 
     const value_count = try std.leb.readULEB128(usize, reader);
     if (value_count != len) {
+        std.debug.print("Incorrect value count: {}, expected: {}\n", .{ value_count, len });
         return error.IncorrectValueCount;
     }
 
@@ -137,6 +138,30 @@ pub fn decodeDeltaLengthByteArray(comptime T: type, gpa: std.mem.Allocator, len:
     }
 
     return values;
+}
+
+pub fn decodeDeltaByteArray(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
+    if (T != []const u8) {
+        return error.UnsupportedType;
+    }
+
+    const prefix_lengths = try decodeDeltaBinaryPacked(i32, gpa, len, reader);
+    const suffixes = try decodeDeltaLengthByteArray(T, gpa, len, reader);
+    if (suffixes.len < 2) {
+        return suffixes;
+    }
+
+    for (suffixes[1..], prefix_lengths[1..], 1..) |suffix, prefix_len, i| {
+        const prefix = suffixes[i - 1];
+        if (prefix.len < prefix_len) {
+            return error.InvalidPrefixLength;
+        }
+
+        const final = try std.mem.concat(gpa, u8, &[_]T{ prefix[0..@intCast(prefix_len)], suffix });
+        suffixes[i] = final;
+    }
+
+    return suffixes;
 }
 
 // Tests are borrowed from https://github.com/apache/arrow-rs/blob/ac51632af79b01738dbc87a27c4a95512cde2faf/parquet/src/encodings/rle.rs#L526

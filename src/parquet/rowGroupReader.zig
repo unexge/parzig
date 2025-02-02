@@ -100,6 +100,7 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
             return switch (data_page.encoding) {
                 .DELTA_BINARY_PACKED => decoding.decodeDeltaBinaryPacked(T, arena, num_values, decoder),
                 .DELTA_LENGTH_BYTE_ARRAY => decoding.decodeDeltaLengthByteArray(T, arena, num_values, decoder),
+                .DELTA_BYTE_ARRAY => decoding.decodeDeltaByteArray(T, arena, num_values, decoder),
                 else => {
                     std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
                     return error.UnsupportedEncoding;
