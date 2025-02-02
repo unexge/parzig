@@ -21,8 +21,10 @@ fn isAssignable(comptime T: type, parquet_type: parquet_schema.Type) bool {
 }
 
 pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnChunk) ![]T {
+    const Inner = unwrapOptional(T);
+
     const metadata = column.meta_data orelse return error.MissingColumnMetadata;
-    if (!isAssignable(T, metadata.type)) {
+    if (!isAssignable(Inner, metadata.type)) {
         return error.UnexpectedType;
     }
 
@@ -41,6 +43,7 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
         .DATA_PAGE => {
             const data_page = page_header.data_page_header.?;
             const num_values: usize = @intCast(data_page.num_values);
+            var num_encoded_values = num_values;
 
             const decoder = try decoderForPage(arena, file.source.reader(), metadata.codec, page_header.compressed_page_size);
 
@@ -49,15 +52,26 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 defer arena.free(values);
             }
 
+            var def_values: []u16 = undefined;
             if (def_level > 0) {
-                const values = try file.readLevelDataV1(decoder, def_level, num_values);
-                defer arena.free(values);
+                def_values = try file.readLevelDataV1(decoder, def_level, num_values);
+
+                num_encoded_values = blk: {
+                    var i: usize = 0;
+                    for (def_values) |v| {
+                        i += v;
+                    }
+                    break :blk i;
+                };
+            }
+            defer {
+                if (def_level > 0) arena.free(def_values);
             }
 
-            return switch (data_page.encoding) {
-                .PLAIN => decoding.decodePlain(T, arena, num_values, decoder),
-                .PLAIN_DICTIONARY, .RLE_DICTIONARY => {
-                    const indices = try decoding.decodeRleDictionary(u32, arena, num_values, decoder);
+            const encoded_values = switch (data_page.encoding) {
+                .PLAIN => try decoding.decodePlain(Inner, arena, num_encoded_values, decoder),
+                .PLAIN_DICTIONARY, .RLE_DICTIONARY => blk: {
+                    const indices = try decoding.decodeRleDictionary(u32, arena, num_encoded_values, decoder);
 
                     try source.seekTo(@intCast(metadata.dictionary_page_offset.?));
                     const dict_page_header = try page_header_reader.read(arena, source.reader());
@@ -65,23 +79,26 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
 
                     const decoder_for_dict = try decoderForPage(arena, file.source.reader(), metadata.codec, dict_page_header.compressed_page_size);
 
-                    const dict_values = try decoding.decodePlain(T, arena, @intCast(header.num_values), decoder_for_dict);
+                    const dict_values = try decoding.decodePlain(Inner, arena, @intCast(header.num_values), decoder_for_dict);
 
-                    const values = try arena.alloc(T, indices.len);
+                    const values = try arena.alloc(Inner, indices.len);
                     for (indices, 0..) |idx, i| {
                         values[i] = dict_values[idx];
                     }
-                    return values;
+                    break :blk values;
                 },
                 else => {
                     std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
                     return error.UnsupportedEncoding;
                 },
             };
+
+            return decodeValues(T, arena, num_encoded_values, encoded_values, num_values, def_values);
         },
         .DATA_PAGE_V2 => {
             const data_page = page_header.data_page_header_v2.?;
             const num_values: usize = @intCast(data_page.num_values);
+            var num_encoded_values = num_values;
 
             const reader = file.source.reader();
 
@@ -90,28 +107,77 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 defer arena.free(values);
             }
 
+            var def_values: []u16 = undefined;
             if (def_level > 0) {
-                const values = try file.readLevelDataV2(reader, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
-                defer arena.free(values);
+                def_values = try file.readLevelDataV2(reader, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
+
+                num_encoded_values = blk: {
+                    var i: usize = 0;
+                    for (def_values) |v| {
+                        i += v;
+                    }
+                    break :blk i;
+                };
+            }
+            defer {
+                if (def_level > 0) arena.free(def_values);
             }
 
             const decoder = try decoderForPage(arena, reader, metadata.codec, page_header.compressed_page_size);
 
-            return switch (data_page.encoding) {
-                .DELTA_BINARY_PACKED => decoding.decodeDeltaBinaryPacked(T, arena, num_values, decoder),
-                .DELTA_LENGTH_BYTE_ARRAY => decoding.decodeDeltaLengthByteArray(T, arena, num_values, decoder),
-                .DELTA_BYTE_ARRAY => decoding.decodeDeltaByteArray(T, arena, num_values, decoder),
+            const encoded_values = switch (data_page.encoding) {
+                .DELTA_BINARY_PACKED => try decoding.decodeDeltaBinaryPacked(Inner, arena, num_encoded_values, decoder),
+                .DELTA_LENGTH_BYTE_ARRAY => try decoding.decodeDeltaLengthByteArray(Inner, arena, num_encoded_values, decoder),
+                .DELTA_BYTE_ARRAY => try decoding.decodeDeltaByteArray(Inner, arena, num_encoded_values, decoder),
                 else => {
                     std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
                     return error.UnsupportedEncoding;
                 },
             };
+
+            return decodeValues(T, arena, num_encoded_values, encoded_values, num_values, def_values);
         },
         else => {
             std.debug.print("{any} is not supported\n", .{page_header.type});
             return error.PageTypeNotSupported;
         },
     }
+}
+
+inline fn decodeValues(
+    comptime T: type,
+    arena: std.mem.Allocator,
+    num_encoded_values: usize,
+    encoded_values: []unwrapOptional(T),
+    num_values: usize,
+    def_values: []u16,
+) ![]T {
+    if (num_values == num_encoded_values) {
+        // No nulls
+        // TODO: Can we just cast `num_values` to `[]T`?
+        const values = try arena.alloc(T, num_values);
+        for (encoded_values, 0..) |v, i| {
+            values[i] = v;
+        }
+        return values;
+    }
+
+    if (@typeInfo(T) != .Optional) {
+        return error.NullValuesWithoutOptionalType;
+    }
+
+    const values = try arena.alloc(T, num_values);
+    var last_decoded_value: usize = 0;
+    for (def_values, 0..) |v, i| {
+        if (v == 0) {
+            values[i] = null;
+        } else {
+            values[i] = encoded_values[last_decoded_value];
+            last_decoded_value += 1;
+        }
+    }
+
+    return values;
 }
 
 inline fn decoderForPage(gpa: std.mem.Allocator, inner_reader: anytype, codec: parquet_schema.CompressionCodec, size: i32) !std.io.AnyReader {
@@ -135,5 +201,12 @@ inline fn decoderForPage(gpa: std.mem.Allocator, inner_reader: anytype, codec: p
             std.debug.print("Unsupported codec: {any}\n", .{codec});
             return error.UnsupportedCodec;
         },
+    };
+}
+
+fn unwrapOptional(comptime T: type) type {
+    return switch (@typeInfo(T)) {
+        .Optional => |*o| o.child,
+        else => T,
     };
 }

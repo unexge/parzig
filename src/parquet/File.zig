@@ -199,6 +199,18 @@ test "reading gzipped file" {
     try std.testing.expectEqualStrings("Natalia sold 48/2 = <<48/2=24>>24 clips in May.\nNatalia sold 48+24 = <<48+24=72>>72 clips altogether in April and May.\n#### 72", anwsers[0]);
 }
 
+test "reading simple file with nulls" {
+    var file = try readTestFile("testdata/simple_with_nulls.parquet");
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(3, file.metadata.schema.len);
+
+    var rg = file.rowGroup(0);
+    try std.testing.expectEqualSlices(?i64, &[_]?i64{ 1, 2, null, 4 }, try rg.readColumn(?i64, 0));
+    try std.testing.expectEqualDeep(&[_]?[]const u8{ null, "foo", "bar", null }, try rg.readColumn(?[]const u8, 1));
+}
+
 fn readTestFile(path: []const u8) !File {
     const simple_file = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
     const source = std.io.StreamSource{ .file = simple_file };
