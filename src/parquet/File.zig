@@ -182,9 +182,9 @@ test "reading a row group of a simple file with dynamic types" {
     defer file.deinit();
 
     var rg = file.rowGroup(0);
-    try std.testing.expectEqualSlices(i64, &[_]i64{ 1, 2, 3, 4, 5 }, (try rg.readColumnDynamic(0)).int64);
-    try std.testing.expectEqualSlices(i64, &[_]i64{ 6, 7, 8, 9, 10 }, (try rg.readColumnDynamic(1)).int64);
-    try std.testing.expectEqualDeep(&[_][]const u8{ "a", "b", "c", "d", "e" }, (try rg.readColumnDynamic(2)).byte_array);
+    try std.testing.expectEqualSlices(?i64, &[_]?i64{ 1, 2, 3, 4, 5 }, (try rg.readColumnDynamic(0)).int64);
+    try std.testing.expectEqualSlices(?i64, &[_]?i64{ 6, 7, 8, 9, 10 }, (try rg.readColumnDynamic(1)).int64);
+    try std.testing.expectEqualDeep(&[_]?[]const u8{ "a", "b", "c", "d", "e" }, (try rg.readColumnDynamic(2)).byte_array);
 }
 
 test "reading gzipped file" {
@@ -209,6 +209,18 @@ test "reading simple file with nulls" {
     var rg = file.rowGroup(0);
     try std.testing.expectEqualSlices(?i64, &[_]?i64{ 1, 2, null, 4 }, try rg.readColumn(?i64, 0));
     try std.testing.expectEqualDeep(&[_]?[]const u8{ null, "foo", "bar", null }, try rg.readColumn(?[]const u8, 1));
+}
+
+test "reading simple file with nulls with dynamic types" {
+    var file = try readTestFile("testdata/simple_with_nulls.parquet");
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(3, file.metadata.schema.len);
+
+    var rg = file.rowGroup(0);
+    try std.testing.expectEqualSlices(?i64, &[_]?i64{ 1, 2, null, 4 }, (try rg.readColumnDynamic(0)).int64);
+    try std.testing.expectEqualDeep(&[_]?[]const u8{ null, "foo", "bar", null }, (try rg.readColumnDynamic(1)).byte_array);
 }
 
 fn readTestFile(path: []const u8) !File {

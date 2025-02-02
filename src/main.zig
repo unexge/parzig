@@ -64,8 +64,9 @@ pub fn main() !void {
     return std.process.cleanExit();
 }
 
-fn printValues(comptime T: type, data: []T) void {
-    const fmt_specifier = if (T == []const u8) "{s}" else "{any}";
+fn printValues(comptime T: type, data: []?T) void {
+    // TODO: `{?s}` to format slice of optional strings doesn't work. Upstream issue?
+    const fmt_specifier = if (T == []const u8) "{any}" else "{any}";
     if (data.len > 10) {
         std.debug.print(fmt_specifier ++ "\n", .{data[0..10]});
         std.debug.print("..\n", .{});
