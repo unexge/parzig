@@ -98,7 +98,8 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
         .DATA_PAGE_V2 => {
             const data_page = page_header.data_page_header_v2.?;
             const num_values: usize = @intCast(data_page.num_values);
-            var num_encoded_values = num_values;
+            const num_nulls: usize = @intCast(data_page.num_nulls);
+            const num_encoded_values = num_values - num_nulls;
 
             const reader = file.source.reader();
 
@@ -111,13 +112,13 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
             if (def_level > 0) {
                 def_values = try file.readLevelDataV2(reader, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
 
-                num_encoded_values = blk: {
+                std.debug.assert(num_encoded_values == blk: {
                     var i: usize = 0;
                     for (def_values) |v| {
                         i += v;
                     }
                     break :blk i;
-                };
+                });
             }
             defer {
                 if (def_level > 0) arena.free(def_values);
