@@ -25,12 +25,12 @@ pub fn decodeRleDictionary(comptime T: type, gpa: std.mem.Allocator, len: usize,
 }
 
 pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reader: anytype) !void {
-    var bit_reader = std.io.bitReader(.little, reader);
     var pos: usize = 0;
     while (buf.len > pos) {
         const header = try std.leb.readULEB128(i64, reader);
         if (header & 1 == 1) {
             // bit packet run
+            var bit_reader = std.io.bitReader(.little, reader);
             const len = @min(buf.len - pos, @as(usize, @intCast((header >> 1) * 8)));
             for (0..len) |i| {
                 buf[pos + i] = try bit_reader.readBitsNoEof(T, bit_width);
@@ -38,6 +38,7 @@ pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reade
             pos += len;
         } else {
             // rle run
+            var bit_reader = std.io.bitReader(.little, reader);
             const len = @min(buf.len - pos, @as(usize, @intCast(header >> 1)));
             const val = try bit_reader.readBitsNoEof(T, bit_width);
             for (0..len) |i| {
@@ -76,6 +77,10 @@ pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: us
     const first_value = try protocol_compact.readZigZagInt(T, reader);
 
     const result = try gpa.alloc(T, value_count);
+    if (value_count == 0) {
+        return result;
+    }
+
     result[0] = first_value;
 
     const bit_widths = try gpa.alloc(u8, miniblock_count);
