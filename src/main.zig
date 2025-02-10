@@ -65,14 +65,36 @@ pub fn main() !void {
 }
 
 fn printValues(comptime T: type, data: []?T) void {
-    // TODO: `{?s}` to format slice of optional strings doesn't work. Upstream issue?
-    const fmt_specifier = if (T == []const u8) "{any}" else "{any}";
+    if (T == []const u8) {
+        if (data.len > 10) {
+            for (data[0..10], 0..) |item, i| {
+                if (i == 9) {
+                    std.debug.print("{?s}\n", .{item});
+                } else {
+                    std.debug.print("{?s}, ", .{item});
+                }
+            }
+
+            std.debug.print("..\n", .{});
+            std.debug.print("{d} more\n", .{data.len - 10});
+        } else {
+            for (data, 0..) |item, i| {
+                if (i == data.len - 1) {
+                    std.debug.print("{?s}\n", .{item});
+                } else {
+                    std.debug.print("{?s}, ", .{item});
+                }
+            }
+        }
+
+        return;
+    }
+
     if (data.len > 10) {
-        std.debug.print(fmt_specifier ++ "\n", .{data[0..10]});
-        std.debug.print("..\n", .{});
+        std.debug.print("{any}\n", .{data[0..10]});
         std.debug.print("..\n", .{});
         std.debug.print("{d} more\n", .{data.len - 10});
     } else {
-        std.debug.print(fmt_specifier ++ "\n\n", .{data});
+        std.debug.print("{any}\n\n", .{data});
     }
 }
