@@ -185,6 +185,31 @@ pub fn decodeDeltaByteArray(comptime T: type, gpa: std.mem.Allocator, len: usize
     return suffixes;
 }
 
+pub fn decodeByteStreamSplit(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
+    if (T != f32 and T != f64) {
+        return error.UnsupportedType;
+    }
+
+    const Bytesize = @typeInfo(T).Float.bits / 8;
+    const Int = if (T == f32) u32 else u64;
+    const size = Bytesize * len;
+
+    const buf = try gpa.alloc(u8, size);
+    try reader.readNoEof(buf);
+
+    const values = try gpa.alloc(T, len);
+    for (0..len) |i| {
+        var val: [Bytesize]u8 = undefined;
+        inline for (0..Bytesize) |k| {
+            val[k] = buf[i + len * k];
+        }
+
+        const int: Int = @bitCast(val);
+        values[i] = @bitCast(int);
+    }
+    return values;
+}
+
 // Tests are borrowed from https://github.com/apache/arrow-rs/blob/ac51632af79b01738dbc87a27c4a95512cde2faf/parquet/src/encodings/rle.rs#L526
 
 test "rle decode i32" {

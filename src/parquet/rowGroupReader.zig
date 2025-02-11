@@ -87,6 +87,7 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                     }
                     break :blk values;
                 },
+                .BYTE_STREAM_SPLIT => try decoding.decodeByteStreamSplit(Inner, arena, num_encoded_values, decoder),
                 else => {
                     std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
                     return error.UnsupportedEncoding;
