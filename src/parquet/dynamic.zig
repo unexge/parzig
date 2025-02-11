@@ -16,7 +16,8 @@ pub const Values = union(enum) {
 pub fn readColumn(file: *File, column: *parquet_schema.ColumnChunk) !Values {
     const metadata = column.meta_data orelse return error.MissingColumnMetadata;
     return switch (metadata.type) {
-        .BOOLEAN, .FLOAT, .DOUBLE => error.UnsupportedType,
+        .FLOAT, .DOUBLE => error.UnsupportedType,
+        .BOOLEAN => .{ .boolean = try readColumnComptime(?bool, file, column) },
         .INT32 => .{ .int32 = try readColumnComptime(?i32, file, column) },
         .INT64 => .{ .int64 = try readColumnComptime(?i64, file, column) },
         .INT96 => .{ .int96 = try readColumnComptime(?i96, file, column) },

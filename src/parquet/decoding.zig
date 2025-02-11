@@ -2,6 +2,10 @@ const std = @import("std");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
 
 pub fn decodePlain(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
+    if (T == bool) {
+        return @ptrCast(try decodeBitPacked(u1, gpa, len, 1, reader));
+    }
+
     const buf = try gpa.alloc(T, len);
     const is_byte_array = T == []const u8;
     for (0..len) |i| {
@@ -47,6 +51,15 @@ pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reade
             pos += len;
         }
     }
+}
+
+pub fn decodeBitPacked(comptime T: type, gpa: std.mem.Allocator, len: usize, bit_width: u8, reader: anytype) ![]T {
+    const values = try gpa.alloc(T, len);
+    var bit_reader = std.io.bitReader(.little, reader);
+    for (0..len) |i| {
+        values[i] = try bit_reader.readBitsNoEof(T, bit_width);
+    }
+    return values;
 }
 
 pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
