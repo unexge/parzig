@@ -4,6 +4,69 @@ const parzig = @import("parzig");
 const File = parzig.parquet.File;
 const testing = std.testing;
 
+test "all types plain" {
+    var file = try readTestFile("testdata/parquet-testing/data/alltypes_plain.parquet");
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(8, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    try testing.expectEqualSlices(i32, &[_]i32{ 4, 5, 6, 7, 2, 3, 0, 1 }, try rg.readColumn(i32, 0));
+    try testing.expectEqualSlices(bool, &[_]bool{ true, false, true, false, true, false, true, false }, try rg.readColumn(bool, 1));
+    try testing.expectEqualSlices(i32, &[_]i32{ 0, 1, 0, 1, 0, 1, 0, 1 }, try rg.readColumn(i32, 2));
+    try testing.expectEqualSlices(i32, &[_]i32{ 0, 1, 0, 1, 0, 1, 0, 1 }, try rg.readColumn(i32, 3));
+    try testing.expectEqualSlices(i32, &[_]i32{ 0, 1, 0, 1, 0, 1, 0, 1 }, try rg.readColumn(i32, 4));
+    try testing.expectEqualSlices(i64, &[_]i64{ 0, 10, 0, 10, 0, 10, 0, 10 }, try rg.readColumn(i64, 5));
+    try testing.expectEqualSlices(f32, &[_]f32{ 0.0, 1.100000023841858, 0.0, 1.100000023841858, 0.0, 1.100000023841858, 0.0, 1.100000023841858 }, try rg.readColumn(f32, 6));
+    try testing.expectEqualSlices(f64, &[_]f64{ 0.0, 10.1, 0.0, 10.1, 0.0, 10.1, 0.0, 10.1 }, try rg.readColumn(f64, 7));
+    try testing.expectEqualDeep(&[_][]const u8{ "03/01/09", "03/01/09", "04/01/09", "04/01/09", "02/01/09", "02/01/09", "01/01/09", "01/01/09" }, try rg.readColumn([]const u8, 8));
+    try testing.expectEqualDeep(&[_][]const u8{ "0", "1", "0", "1", "0", "1", "0", "1" }, try rg.readColumn([]const u8, 9));
+}
+
+test "all types plain snappy compressed" {
+    var file = try readTestFile("testdata/parquet-testing/data/alltypes_plain.snappy.parquet");
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(2, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    try testing.expectEqualSlices(i32, &[_]i32{ 6, 7 }, try rg.readColumn(i32, 0));
+    try testing.expectEqualSlices(bool, &[_]bool{ true, false }, try rg.readColumn(bool, 1));
+    try testing.expectEqualSlices(i32, &[_]i32{ 0, 1 }, try rg.readColumn(i32, 2));
+    try testing.expectEqualSlices(i32, &[_]i32{ 0, 1 }, try rg.readColumn(i32, 3));
+    try testing.expectEqualSlices(i32, &[_]i32{ 0, 1 }, try rg.readColumn(i32, 4));
+    try testing.expectEqualSlices(i64, &[_]i64{ 0, 10 }, try rg.readColumn(i64, 5));
+    try testing.expectEqualSlices(f32, &[_]f32{ 0.0, 1.100000023841858 }, try rg.readColumn(f32, 6));
+    try testing.expectEqualSlices(f64, &[_]f64{ 0.0, 10.1 }, try rg.readColumn(f64, 7));
+    try testing.expectEqualDeep(&[_][]const u8{ "04/01/09", "04/01/09" }, try rg.readColumn([]const u8, 8));
+    try testing.expectEqualDeep(&[_][]const u8{ "0", "1" }, try rg.readColumn([]const u8, 9));
+}
+
+test "all types dictionary" {
+    var file = try readTestFile("testdata/parquet-testing/data/alltypes_dictionary.parquet");
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(2, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    try testing.expectEqualSlices(i32, &[_]i32{ 0, 1 }, try rg.readColumn(i32, 0));
+    try testing.expectEqualSlices(bool, &[_]bool{ true, false }, try rg.readColumn(bool, 1));
+    try testing.expectEqualSlices(i32, &[_]i32{ 0, 1 }, try rg.readColumn(i32, 2));
+    try testing.expectEqualSlices(i32, &[_]i32{ 0, 1 }, try rg.readColumn(i32, 3));
+    try testing.expectEqualSlices(i32, &[_]i32{ 0, 1 }, try rg.readColumn(i32, 4));
+    try testing.expectEqualSlices(i64, &[_]i64{ 0, 10 }, try rg.readColumn(i64, 5));
+    try testing.expectEqualSlices(f32, &[_]f32{ 0.0, 1.100000023841858 }, try rg.readColumn(f32, 6));
+    try testing.expectEqualSlices(f64, &[_]f64{ 0.0, 10.1 }, try rg.readColumn(f64, 7));
+    try testing.expectEqualDeep(&[_][]const u8{ "01/01/09", "01/01/09" }, try rg.readColumn([]const u8, 8));
+    try testing.expectEqualDeep(&[_][]const u8{ "0", "1" }, try rg.readColumn([]const u8, 9));
+}
+
 test "delta byte array" {
     // Generated with this convoluted Python one-liner:
     // import polars as pl;df = pl.read_csv("./testdata/parquet-testing/data/delta_byte_array_expect.csv"); "[_]?[]const u8{" + "},[_]?[]const u8{".join([",".join([f'"{x[0]}"' if x[0] is not None else "null" for x in df.select(c).iter_rows()]) for c in df.columns]) + "}"
