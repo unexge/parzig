@@ -7,13 +7,16 @@ pub fn decodePlain(comptime T: type, gpa: std.mem.Allocator, len: usize, reader:
     }
 
     const buf = try gpa.alloc(T, len);
-    const is_byte_array = T == []const u8;
     for (0..len) |i| {
-        if (is_byte_array) {
+        if (T == []const u8) {
             const num_bytes = try reader.readInt(u32, .little);
             const elem_buf = try gpa.alloc(u8, num_bytes);
             _ = try reader.readAll(elem_buf);
             buf[i] = elem_buf;
+        } else if (T == f32) {
+            buf[i] = @bitCast(try reader.readInt(u32, .little));
+        } else if (T == f64) {
+            buf[i] = @bitCast(try reader.readInt(u64, .little));
         } else {
             buf[i] = try reader.readInt(T, .little);
         }
