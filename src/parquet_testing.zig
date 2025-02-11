@@ -67,6 +67,68 @@ test "all types dictionary" {
     try testing.expectEqualDeep(&[_][]const u8{ "0", "1" }, try rg.readColumn([]const u8, 9));
 }
 
+test "binary data" {
+    var file = try readTestFile("testdata/parquet-testing/data/binary.parquet");
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(12, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    try testing.expectEqualDeep(&[_][]const u8{
+        &[_]u8{0x00},
+        &[_]u8{0x01},
+        &[_]u8{0x02},
+        &[_]u8{0x03},
+        &[_]u8{0x04},
+        &[_]u8{0x05},
+        &[_]u8{0x06},
+        &[_]u8{0x07},
+        &[_]u8{0x08},
+        &[_]u8{0x09},
+        &[_]u8{0x0a},
+        &[_]u8{0x0b},
+    }, try rg.readColumn([]const u8, 0));
+}
+
+test "byte array decimal" {
+    var file = try readTestFile("testdata/parquet-testing/data/byte_array_decimal.parquet");
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(24, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    try testing.expectEqualDeep(&[_][]const u8{
+        &[_]u8{0x64},
+        &[_]u8{ 0x00, 0xc8 },
+        &[_]u8{ 0x01, 0x2c },
+        &[_]u8{ 0x01, 0x90 },
+        &[_]u8{ 0x01, 0xf4 },
+        &[_]u8{ 0x02, 0x58 },
+        &[_]u8{ 0x02, 0xbc },
+        &[_]u8{ 0x03, 0x20 },
+        &[_]u8{ 0x03, 0x84 },
+        &[_]u8{ 0x03, 0xe8 },
+        &[_]u8{ 0x04, 0x4c },
+        &[_]u8{ 0x04, 0xb0 },
+        &[_]u8{ 0x05, 0x14 },
+        &[_]u8{ 0x05, 0x78 },
+        &[_]u8{ 0x05, 0xdc },
+        &[_]u8{ 0x06, 0x40 },
+        &[_]u8{ 0x06, 0xa4 },
+        &[_]u8{ 0x07, 0x08 },
+        &[_]u8{ 0x07, 0x6c },
+        &[_]u8{ 0x07, 0xd0 },
+        &[_]u8{ 0x08, 0x34 },
+        &[_]u8{ 0x08, 0x98 },
+        &[_]u8{ 0x08, 0xfc },
+        &[_]u8{ 0x09, 0x60 },
+    }, try rg.readColumn([]const u8, 0));
+}
+
 test "delta byte array" {
     // Generated with this convoluted Python one-liner:
     // import polars as pl;df = pl.read_csv("./testdata/parquet-testing/data/delta_byte_array_expect.csv"); "[_]?[]const u8{" + "},[_]?[]const u8{".join([",".join([f'"{x[0]}"' if x[0] is not None else "null" for x in df.select(c).iter_rows()]) for c in df.columns]) + "}"
