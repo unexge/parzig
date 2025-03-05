@@ -164,7 +164,7 @@ inline fn decodeValues(
         return values;
     }
 
-    if (@typeInfo(T) != .Optional) {
+    if (@typeInfo(T) != .optional) {
         return error.NullValuesWithoutOptionalType;
     }
 
@@ -208,7 +208,7 @@ inline fn decoderForPage(gpa: std.mem.Allocator, inner_reader: anytype, codec: p
 
 fn unwrapOptional(comptime T: type) type {
     return switch (@typeInfo(T)) {
-        .Optional => |*o| o.child,
+        .optional => |*o| o.child,
         else => T,
     };
 }

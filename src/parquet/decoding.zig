@@ -190,7 +190,7 @@ pub fn decodeByteStreamSplit(comptime T: type, gpa: std.mem.Allocator, len: usiz
         return error.UnsupportedType;
     }
 
-    const Bytesize = @typeInfo(T).Float.bits / 8;
+    const Bytesize = @typeInfo(T).float.bits / 8;
     const Int = if (T == f32) u32 else u64;
     const size = Bytesize * len;
 

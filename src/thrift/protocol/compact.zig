@@ -26,7 +26,7 @@ pub fn readBinary(arena: std.mem.Allocator, reader: anytype) ![]const u8 {
 
 fn unwrapOptional(comptime T: type) type {
     return switch (@typeInfo(T)) {
-        .Optional => |*o| o.child,
+        .optional => |*o| o.child,
         else => T,
     };
 }
@@ -79,11 +79,11 @@ pub fn ListReader(comptime E: type) type {
                         result[i] = readZigZagInt(i8, reader) == 1;
                     },
                     .i8, .i16, .i32, .i64 => {
-                        if (@typeInfo(E) != .Int and @typeInfo(E) != .Enum) {
+                        if (@typeInfo(E) != .int and @typeInfo(E) != .@"enum") {
                             return error.UnexpectedInt;
                         }
 
-                        result[i] = if (@typeInfo(E) == .Enum)
+                        result[i] = if (@typeInfo(E) == .@"enum")
                             @enumFromInt(try readZigZagInt(i32, reader))
                         else
                             try readZigZagInt(E, reader);
@@ -91,8 +91,8 @@ pub fn ListReader(comptime E: type) type {
                     .double => return error.DoubleNotSupported,
                     .binary => {
                         switch (@typeInfo(E)) {
-                            .Pointer => |*p| {
-                                if (p.size != .Slice or !p.is_const or p.child != u8) {
+                            .pointer => |*p| {
+                                if (p.size != .slice or !p.is_const or p.child != u8) {
                                     return error.UnexpectedBinary;
                                 }
                             },
@@ -103,8 +103,8 @@ pub fn ListReader(comptime E: type) type {
                     },
                     .list => {
                         const inner_elem_type = switch (@typeInfo(E)) {
-                            .Pointer => |*p| blk: {
-                                if (p.size != .Slice) {
+                            .pointer => |*p| blk: {
+                                if (p.size != .slice) {
                                     return error.UnexpectedList;
                                 }
                                 break :blk p.child;
@@ -117,7 +117,7 @@ pub fn ListReader(comptime E: type) type {
                     .set => return error.SetNotSupported,
                     .map => return error.MapNotSupported,
                     .@"struct" => {
-                        if (@typeInfo(E) != .Struct and @typeInfo(E) != .Union) {
+                        if (@typeInfo(E) != .@"struct" and @typeInfo(E) != .@"union") {
                             return error.UnexpectedStruct;
                         }
 
@@ -159,8 +159,8 @@ pub fn StructReader(comptime T: type) type {
     };
 
     const fields = switch (@typeInfo(T)) {
-        .Struct => |*s| s.fields,
-        .Union => |*u| u.fields,
+        .@"struct" => |*s| s.fields,
+        .@"union" => |*u| u.fields,
         else => @compileError("Expected struct or union"),
     };
 
@@ -190,6 +190,7 @@ pub fn StructReader(comptime T: type) type {
 
     const field_names = blk: {
         var field_names: [max_field_id][]const u8 = undefined;
+        @setEvalBranchQuota(3000);
         inline for (fields, 0..) |field, i| {
             _ = comptime std.meta.intToEnum(std.meta.FieldEnum(T), i) catch continue;
             const field_id = comptime T.fieldId(@enumFromInt(i));
@@ -252,12 +253,12 @@ pub fn StructReader(comptime T: type) type {
                                 @field(result, field_name) = false;
                             },
                             .i8, .i16, .i32, .i64 => {
-                                if (@typeInfo(expected_field_type) != .Int and @typeInfo(expected_field_type) != .Enum) {
+                                if (@typeInfo(expected_field_type) != .int and @typeInfo(expected_field_type) != .@"enum") {
                                     std.debug.print("Unexpected {any}\n", .{expected_field_type});
                                     return error.UnexpectedInt;
                                 }
 
-                                @field(result, field_name) = if (@typeInfo(expected_field_type) == .Enum)
+                                @field(result, field_name) = if (@typeInfo(expected_field_type) == .@"enum")
                                     @enumFromInt(try readZigZagInt(i32, reader))
                                 else
                                     try readZigZagInt(expected_field_type, reader);
@@ -265,8 +266,8 @@ pub fn StructReader(comptime T: type) type {
                             .double => return error.DoubleNotSupported,
                             .binary => {
                                 switch (@typeInfo(expected_field_type)) {
-                                    .Pointer => |*p| {
-                                        if (p.size != .Slice or !p.is_const or p.child != u8) {
+                                    .pointer => |*p| {
+                                        if (p.size != .slice or !p.is_const or p.child != u8) {
                                             return error.UnexpectedBinary;
                                         }
                                     },
@@ -277,8 +278,8 @@ pub fn StructReader(comptime T: type) type {
                             },
                             .list => {
                                 const elem_type = switch (@typeInfo(expected_field_type)) {
-                                    .Pointer => |*p| blk: {
-                                        if (p.size != .Slice) {
+                                    .pointer => |*p| blk: {
+                                        if (p.size != .slice) {
                                             return error.UnexpectedList;
                                         }
                                         break :blk p.child;
@@ -291,12 +292,12 @@ pub fn StructReader(comptime T: type) type {
                             .set => return error.SetNotSupported,
                             .map => return error.MapNotSupported,
                             .@"struct" => {
-                                if (@typeInfo(expected_field_type) != .Struct and @typeInfo(expected_field_type) != .Union) {
+                                if (@typeInfo(expected_field_type) != .@"struct" and @typeInfo(expected_field_type) != .@"union") {
                                     return error.UnexpectedStruct;
                                 }
 
                                 const value = try StructReader(expected_field_type).read(arena, reader);
-                                if (@typeInfo(T) == .Union) {
+                                if (@typeInfo(T) == .@"union") {
                                     result = @unionInit(T, field_name, value);
                                 } else {
                                     @field(result, field_name) = value;
@@ -308,9 +309,10 @@ pub fn StructReader(comptime T: type) type {
                 }
             }
 
+            @setEvalBranchQuota(3000);
             inline for (fields, 0..) |field, i| {
                 const field_id_idx = comptime T.fieldId(@enumFromInt(i)) - 1;
-                if (!fields_set[field_id_idx] and @typeInfo(field.type) == .Optional) {
+                if (!fields_set[field_id_idx] and @typeInfo(field.type) == .optional) {
                     @field(result, field.name) = null;
                 }
             }
