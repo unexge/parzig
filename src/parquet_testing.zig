@@ -280,6 +280,17 @@ test "byte stream split zstd compressed" {
     try testing.expectEqualSlices(f64, &expected_f64, try rg.readColumn(f64, 1));
 }
 
+test "single nan" {
+    var file = try readTestFile("testdata/parquet-testing/data/single_nan.parquet");
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(1, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    try testing.expectEqualSlices(?f64, &[_]?f64{null}, try rg.readColumn(?f64, 0));
+}
+
 fn readTestFile(path: []const u8) !File {
     const file = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
     const source = std.io.StreamSource{ .file = file };
