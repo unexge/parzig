@@ -107,6 +107,8 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
             if (rep_level > 0) {
                 const values = try file.readLevelDataV2(reader, rep_level, num_values, @intCast(data_page.repetition_levels_byte_length));
                 defer arena.free(values);
+            } else if (data_page.repetition_levels_byte_length > 0) {
+                try reader.skipBytes(@intCast(data_page.repetition_levels_byte_length), .{});
             }
 
             var def_values: []u16 = undefined;
@@ -128,6 +130,13 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
             const decoder = try decoderForPage(arena, reader, metadata.codec, page_header.compressed_page_size);
 
             const encoded_values = switch (data_page.encoding) {
+                .RLE => blk: {
+                    if (Inner != bool) {
+                        return error.UnsupportedType;
+                    }
+
+                    break :blk try decoding.decodeLenghtPrependedRleBitPackedHybrid(Inner, arena, num_encoded_values, 1, decoder);
+                },
                 .DELTA_BINARY_PACKED => try decoding.decodeDeltaBinaryPacked(Inner, arena, num_encoded_values, decoder),
                 .DELTA_LENGTH_BYTE_ARRAY => try decoding.decodeDeltaLengthByteArray(Inner, arena, num_encoded_values, decoder),
                 .DELTA_BYTE_ARRAY => try decoding.decodeDeltaByteArray(Inner, arena, num_encoded_values, decoder),

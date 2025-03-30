@@ -280,6 +280,20 @@ test "byte stream split zstd compressed" {
     try testing.expectEqualSlices(f64, &expected_f64, try rg.readColumn(f64, 1));
 }
 
+test "rle boolean encoding" {
+    // Generated with this convoluted Python one-liner:
+    // import polars as pl;import json;df = pl.read_parquet("./testdata/parquet-testing/data/rle_boolean_encoding.parquet");"[_]?bool{" + ", ".join([json.dumps(x[0]) for x in df.select('datatype_boolean').iter_rows()]) + "}"
+    const expected = [_]?bool{ true, false, null, true, true, false, false, true, true, true, false, false, true, true, false, null, true, true, false, false, true, true, false, null, true, true, false, false, true, true, true, false, false, false, false, true, true, false, null, true, true, false, false, true, true, true, false, false, null, true, true, false, false, true, true, true, false, true, true, false, null, true, true, false, false, true, true, true };
+
+    var file = try readTestFile("testdata/parquet-testing/data/rle_boolean_encoding.parquet");
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+
+    var rg = file.rowGroup(0);
+    try testing.expectEqualSlices(?bool, &expected, (try rg.readColumnDynamic(0)).boolean);
+}
+
 test "single nan" {
     var file = try readTestFile("testdata/parquet-testing/data/single_nan.parquet");
     defer file.deinit();

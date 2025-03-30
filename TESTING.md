@@ -63,6 +63,6 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `repeated_primitive_no_list.parquet`             | 🚧     |
 | `rle-dict-snappy-checksum.parquet`               | 🚧     |
 | `rle-dict-uncompressed-corrupt-checksum.parquet` | 🚧     |
-| `rle_boolean_encoding.parquet`                   | 🚧     |
+| `rle_boolean_encoding.parquet`                   | ✅     |
 | `single_nan.parquet`                             | ✅     |
 | `sort_columns.parquet`                           | 🚧     |

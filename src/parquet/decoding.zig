@@ -31,6 +31,17 @@ pub fn decodeRleDictionary(comptime T: type, gpa: std.mem.Allocator, len: usize,
     return buf;
 }
 
+pub fn decodeLenghtPrependedRleBitPackedHybrid(comptime T: type, gpa: std.mem.Allocator, len: usize, bit_width: u8, reader: anytype) ![]T {
+    const lenght = try reader.readVarInt(u32, .little, 4);
+    if (lenght == 0) return error.EmptyBuffer;
+
+    var limited_reader = std.io.limitedReader(reader, @intCast(lenght));
+
+    const values = try gpa.alloc(T, len);
+    try decodeRleBitPackedHybrid(T, values, bit_width, limited_reader.reader());
+    return values;
+}
+
 pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reader: anytype) !void {
     var pos: usize = 0;
     while (buf.len > pos) {
