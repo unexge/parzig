@@ -28,6 +28,10 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
         return error.UnexpectedType;
     }
 
+    if (metadata.num_values == 0) {
+        return &[_]T{};
+    }
+
     const arena = file.arena.allocator();
     var source = file.source;
 

@@ -136,6 +136,7 @@ pub fn StructReader(comptime T: type) type {
     const STOP = 0;
 
     const FieldType = enum(u4) {
+        stop = 0,
         boolean_true = 1,
         boolean_false = 2,
         i8 = 3,
@@ -229,6 +230,9 @@ pub fn StructReader(comptime T: type) type {
                 }
 
                 const field_type = try FieldType.fromEnum(@truncate(header));
+                if (field_type == .stop) {
+                    break;
+                }
 
                 inline for (field_types, field_names, 0..) |expected_field_type, field_name, i| {
                     if (expected_field_type == void) {
@@ -240,6 +244,7 @@ pub fn StructReader(comptime T: type) type {
                         fields_set[field_id_idx] = true;
 
                         switch (field_type) {
+                            .stop => unreachable,
                             .boolean_true => {
                                 if (expected_field_type != bool) {
                                     return error.UnexpectedBool;

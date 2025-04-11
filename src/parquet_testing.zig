@@ -280,6 +280,24 @@ test "byte stream split zstd compressed" {
     try testing.expectEqualSlices(f64, &expected_f64, try rg.readColumn(f64, 1));
 }
 
+test "column chunk key-value metadata" {
+    var file = try readTestFile("testdata/parquet-testing/data/column_chunk_key_value_metadata.parquet");
+    defer file.deinit();
+
+    try testing.expectEqual(0, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    try testing.expectEqualSlices(?i32, &[_]?i32{}, try rg.readColumn(?i32, 0));
+
+    const kv = rg.rg.columns[0].meta_data.?.key_value_metadata.?;
+    try testing.expectEqualStrings("foo", kv[0].key);
+    try testing.expectEqualStrings("bar", kv[0].value.?);
+    try testing.expectEqualStrings("thisiskeywithoutvalue", kv[1].key);
+    try testing.expectEqual(null, kv[1].value);
+
+    try testing.expectEqual(null, rg.rg.columns[1].meta_data.?.key_value_metadata);
+}
+
 test "rle boolean encoding" {
     // Generated with this convoluted Python one-liner:
     // import polars as pl;import json;df = pl.read_parquet("./testdata/parquet-testing/data/rle_boolean_encoding.parquet");"[_]?bool{" + ", ".join([json.dumps(x[0]) for x in df.select('datatype_boolean').iter_rows()]) + "}"

@@ -15,7 +15,7 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `byte_array_decimal.parquet`                     | ✅     |
 | `byte_stream_split.zstd.parquet`                 | ✅     |
 | `byte_stream_split_extended.gzip.parquet`        | 🚧     |
-| `column_chunk_key_value_metadata.parquet`        | 🚧     |
+| `column_chunk_key_value_metadata.parquet`        | ✅     |
 | `concatenated_gzip_members.parquet`              | 🚧     |
 | `data_index_bloom_encoding_stats.parquet`        | 🚧     |
 | `data_index_bloom_encoding_with_length.parquet`  | 🚧     |
