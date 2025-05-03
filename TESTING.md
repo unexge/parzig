@@ -25,8 +25,8 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `datapage_v2.snappy.parquet`                     | 🚧     |
 | `delta_binary_packed.parquet`                    | ✅     |
 | `delta_byte_array.parquet`                       | ✅     |
-| `delta_encoding_optional_column.parquet`         | 🚧     |
-| `delta_encoding_required_column.parquet`         | 🚧     |
+| `delta_encoding_optional_column.parquet`         | ✅     |
+| `delta_encoding_required_column.parquet`         | ✅     |
 | `delta_length_byte_array.parquet`                | ✅     |
 | `dict-page-offset-zero.parquet`                  | 🚧     |
 | `fixed_length_byte_array.parquet`                | 🚧     |

@@ -116,7 +116,8 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
             }
 
             var def_values: []u16 = undefined;
-            if (def_level > 0) {
+            const has_def_values = def_level > 0 and data_page.definition_levels_byte_length > 0;
+            if (has_def_values) {
                 def_values = try file.readLevelDataV2(reader, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
 
                 std.debug.assert(num_encoded_values == blk: {
@@ -128,7 +129,7 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 });
             }
             defer {
-                if (def_level > 0) arena.free(def_values);
+                if (has_def_values) arena.free(def_values);
             }
 
             const decoder = try decoderForPage(arena, reader, metadata.codec, page_header.compressed_page_size);
