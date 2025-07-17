@@ -244,6 +244,8 @@ test "delta encoding required column" {
 }
 
 test "delta length byte array" {
+    @setEvalBranchQuota(1_000_000);
+
     var file = try readTestFile("testdata/parquet-testing/data/delta_length_byte_array.parquet");
     defer file.deinit();
 

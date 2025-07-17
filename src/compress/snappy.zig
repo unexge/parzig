@@ -38,7 +38,7 @@ pub fn Decoder(comptime Inner: type) type {
             EndOfStream,
             OutOfMemory,
         } || Inner.Error;
-        pub const Reader = std.io.Reader(*Self, Error, read);
+        pub const Reader = std.io.GenericReader(*Self, Error, read);
 
         const Self = @This();
 
@@ -63,7 +63,7 @@ pub fn Decoder(comptime Inner: type) type {
                         return buffer_pos;
                     },
                     .length => {
-                        self.inner_remaining = try std.leb.readULEB128(u32, self.inner);
+                        self.inner_remaining = try std.leb.readUleb128(u32, self.inner);
                         self.buffer = try self.gpa.alloc(u8, self.inner_remaining);
                         try self.readTag();
                     },
@@ -242,11 +242,11 @@ test "copy 4-byte" {
 
 test "golden" {
     const compressed_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt.rawsnappy", .{ .mode = .read_only });
-    const compressed = try compressed_file.reader().readAllAlloc(std.testing.allocator, std.math.maxInt(usize));
+    const compressed = try compressed_file.readToEndAlloc(std.testing.allocator, std.math.maxInt(usize));
     defer std.testing.allocator.free(compressed);
 
     const source_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt", .{ .mode = .read_only });
-    const source = try source_file.reader().readAllAlloc(std.testing.allocator, std.math.maxInt(usize));
+    const source = try source_file.readToEndAlloc(std.testing.allocator, std.math.maxInt(usize));
     defer std.testing.allocator.free(source);
 
     expectDecoded(compressed, source);

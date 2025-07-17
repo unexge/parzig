@@ -47,7 +47,10 @@ pub fn main() !void {
         for (rg_metadata.columns, 0..) |column, i| {
             const key = column.meta_data.?.path_in_schema;
             const ty = column.meta_data.?.type;
-            std.debug.print("{s} - {any}, values:\n", .{ key, ty });
+            _ = key;
+            _ = ty;
+            // TODO: Fix printing.
+            // std.debug.print("{s} - {any}, values:\n", .{ key, ty });
             switch (try rg.readColumnDynamic(i)) {
                 .boolean => |data| printValues(bool, data),
                 .int32 => |data| printValues(i32, data),
