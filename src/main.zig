@@ -45,12 +45,10 @@ pub fn main() !void {
         var rg = parquet_file.rowGroup(rg_idx);
 
         for (rg_metadata.columns, 0..) |column, i| {
-            const key = column.meta_data.?.path_in_schema;
             const ty = column.meta_data.?.type;
-            _ = key;
-            _ = ty;
-            // TODO: Fix printing.
-            // std.debug.print("{s} - {any}, values:\n", .{ key, ty });
+            const column_path = try std.mem.join(allocator, ".", column.meta_data.?.path_in_schema);
+            defer allocator.free(column_path);
+            std.debug.print("{s} - {any}, values:\n", .{ column_path, ty });
             switch (try rg.readColumnDynamic(i)) {
                 .boolean => |data| printValues(bool, data),
                 .int32 => |data| printValues(i32, data),
