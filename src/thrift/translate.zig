@@ -465,14 +465,17 @@ const Context = struct {
         }
 
         const has_field_id_method = field_ids.count() > 0;
-        if (has_field_id_method) {
+        const size = if (has_field_id_method) blk: {
             fields[i] = try self.renderFieldIdMethod(field_ids);
-        }
+            break :blk fields.len;
+        } else blk: {
+            break :blk s.fields.count();
+        };
 
         _ = try self.addToken(.r_brace, "}");
 
-        const is_empty = s.fields.count() == 0;
-        const span = try self.listToSpan(fields);
+        const is_empty = i == 0;
+        const span = try self.listToSpan(fields[0..size]);
         return try self.addNode(.{
             .tag = if (is_empty) .container_decl_two else if (has_field_id_method) .container_decl else .container_decl_trailing,
             .main_token = struct_tok,
@@ -640,11 +643,14 @@ pub fn translate(allocator: std.mem.Allocator, document: *thrift.Document) !Ast 
         items[idx] = try ctx.renderDefinition(def);
     }
 
-    if (try ctx.renderPrelude()) |index| {
+    const size = if (try ctx.renderPrelude()) |index| blk: {
         items[items.len - 1] = index;
-    }
+        break :blk items.len;
+    } else blk: {
+        break :blk items.len - 1;
+    };
 
-    ctx.nodes.items(.data)[0] = .{ .extra_range = try ctx.listToSpan(items) };
+    ctx.nodes.items(.data)[0] = .{ .extra_range = try ctx.listToSpan(items[0..size]) };
 
     try ctx.tokens.append(allocator, .{
         .tag = .eof,
@@ -661,57 +667,57 @@ pub fn translate(allocator: std.mem.Allocator, document: *thrift.Document) !Ast 
     };
 }
 
-// test "empty enum" {
-//     try expectTranslated(
-//         \\enum Foo {}
-//     ,
-//         \\pub const Foo = enum {};
-//     );
-// }
+test "empty enum" {
+    try expectTranslated(
+        \\enum Foo {}
+    ,
+        \\pub const Foo = enum(u8) {};
+    );
+}
 
-// test "enum" {
-//     try expectTranslated(
-//         \\enum Foo {
-//         \\  BAR = 0;
-//         \\  BAZ = 1;
-//         \\}
-//     ,
-//         \\pub const Foo = enum(u8) {
-//         \\    BAR = 0,
-//         \\    BAZ = 1,
-//         \\};
-//     );
-// }
+test "enum" {
+    try expectTranslated(
+        \\enum Foo {
+        \\  BAR = 0;
+        \\  BAZ = 1;
+        \\}
+    ,
+        \\pub const Foo = enum(u8) {
+        \\    BAR = 0,
+        \\    BAZ = 1,
+        \\};
+    );
+}
 
-// test "empty struct" {
-//     try expectTranslated(
-//         \\struct Foo {}
-//         \\struct Bar {}
-//     ,
-//         \\pub const Foo = struct {};
-//         \\pub const Bar = struct {};
-//     );
-// }
+test "empty struct" {
+    try expectTranslated(
+        \\struct Foo {}
+        \\struct Bar {}
+    ,
+        \\pub const Foo = struct {};
+        \\pub const Bar = struct {};
+    );
+}
 
-// test "struct" {
-//     try expectTranslated(
-//         \\struct Bar {}
-//         \\struct Foo {
-//         \\  i32 foo;
-//         \\  Bar bar;
-//         \\  list<i64> baz;
-//         \\  optional byte opt;
-//         \\}
-//     ,
-//         \\pub const Bar = struct {};
-//         \\pub const Foo = struct {
-//         \\    foo: i32,
-//         \\    bar: Bar,
-//         \\    baz: []i64,
-//         \\    opt: ?u8 = null,
-//         \\};
-//     );
-// }
+test "struct" {
+    try expectTranslated(
+        \\struct Bar {}
+        \\struct Foo {
+        \\  i32 foo;
+        \\  Bar bar;
+        \\  list<i64> baz;
+        \\  optional byte opt;
+        \\}
+    ,
+        \\pub const Bar = struct {};
+        \\pub const Foo = struct {
+        \\    foo: i32,
+        \\    bar: Bar,
+        \\    baz: []i64,
+        \\    opt: ?u8 = null,
+        \\};
+    );
+}
 
 test "struct with field id" {
     try expectTranslated(
@@ -744,15 +750,15 @@ test "struct with field id" {
     );
 }
 
-// test "empty union" {
-//     try expectTranslated(
-//         \\union Foo {}
-//         \\union Bar {}
-//     ,
-//         \\pub const Foo = union {};
-//         \\pub const Bar = union {};
-//     );
-// }
+test "empty union" {
+    try expectTranslated(
+        \\union Foo {}
+        \\union Bar {}
+    ,
+        \\pub const Foo = union {};
+        \\pub const Bar = union {};
+    );
+}
 
 test "union" {
     try expectTranslated(
