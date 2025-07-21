@@ -2,7 +2,7 @@ const std = @import("std");
 const parzig = @import("parzig");
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer {
         _ = gpa.deinit();
     }
