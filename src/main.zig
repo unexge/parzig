@@ -4,7 +4,7 @@ const parzig = @import("parzig");
 pub fn main() !void {
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer {
-        _ = gpa.deinit();
+        std.debug.assert(gpa.deinit() == .ok);
     }
     const allocator = gpa.allocator();
 
