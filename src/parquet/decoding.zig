@@ -10,7 +10,7 @@ pub fn decodePlain(comptime T: type, gpa: std.mem.Allocator, len: usize, reader:
 
     const buf = try gpa.alloc(T, len);
     for (0..len) |i| {
-        if (T == []const u8) {
+        if (T == []const u8 or T == []u8) {
             const num_bytes = try reader.takeInt(u32, .little);
             const elem_buf = try gpa.alloc(u8, num_bytes);
             _ = try reader.readSliceAll(elem_buf);

@@ -7,6 +7,7 @@ const parquet_schema = @import("../generated/parquet.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
 const decoding = @import("./decoding.zig");
 const dynamic = @import("./dynamic.zig");
+const physical = @import("./physical.zig");
 const rowGroupReader = @import("./rowGroupReader.zig");
 
 const File = @This();
@@ -108,6 +109,7 @@ pub fn readLevelDataV2(self: *File, reader: *Reader, bit_width: u8, num_values: 
 
 test {
     _ = decoding;
+    _ = physical;
 }
 
 test "missing PAR1 header" {

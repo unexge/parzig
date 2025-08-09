@@ -9,8 +9,8 @@ pub const Values = union(enum) {
     int96: []?i96,
     float: []?f32,
     double: []?f64,
-    byte_array: []?[]const u8,
-    fixed_len_byte_array: []?[]const u8,
+    byte_array: []?[]u8,
+    fixed_len_byte_array: []?[]u8,
 };
 
 pub fn readColumn(file: *File, column: *parquet_schema.ColumnChunk) !Values {
@@ -22,7 +22,7 @@ pub fn readColumn(file: *File, column: *parquet_schema.ColumnChunk) !Values {
         .INT96 => .{ .int96 = try readColumnComptime(?i96, file, column) },
         .FLOAT => .{ .float = try readColumnComptime(?f32, file, column) },
         .DOUBLE => .{ .double = try readColumnComptime(?f64, file, column) },
-        .BYTE_ARRAY => .{ .byte_array = try readColumnComptime(?[]const u8, file, column) },
-        .FIXED_LEN_BYTE_ARRAY => .{ .fixed_len_byte_array = try readColumnComptime(?[]const u8, file, column) },
+        .BYTE_ARRAY => .{ .byte_array = try readColumnComptime(?[]u8, file, column) },
+        .FIXED_LEN_BYTE_ARRAY => .{ .fixed_len_byte_array = try readColumnComptime(?[]u8, file, column) },
     };
 }

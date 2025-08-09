@@ -255,7 +255,7 @@ test "delta encoding required column" {
     }
     // and the remaining columns are strings
     for (expected_strings, 9..) |row, i| {
-        try testing.expectEqualDeep(&row, try rg.readColumn([]const u8, i));
+        try testing.expectEqualDeep(&row, try rg.readColumn([]u8, i));
     }
 }
 
@@ -270,9 +270,9 @@ test "delta length byte array" {
     try testing.expectEqual(1, file.metadata.row_groups.len);
 
     const expected = comptime blk: {
-        var arr: [1000]?[]const u8 = undefined;
+        var arr: [1000]?[]u8 = undefined;
         for (0..1000) |i| {
-            arr[i] = std.fmt.comptimePrint("apple_banana_mango{}", .{i * i});
+            arr[i] = @constCast(std.fmt.comptimePrint("apple_banana_mango{}", .{i * i}));
         }
         break :blk arr;
     };

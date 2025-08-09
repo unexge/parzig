@@ -5,6 +5,7 @@ const parquet_schema = @import("../generated/parquet.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
 const compress = @import("../compress.zig");
 const decoding = @import("./decoding.zig");
+const physical = @import("./physical.zig");
 const File = @import("./File.zig");
 
 const RowGroupReader = @This();
@@ -17,7 +18,7 @@ fn isAssignable(comptime T: type, parquet_type: parquet_schema.Type) bool {
         .INT96 => T == i96,
         .FLOAT => T == f32,
         .DOUBLE => T == f64,
-        .BYTE_ARRAY, .FIXED_LEN_BYTE_ARRAY => T == []const u8,
+        .BYTE_ARRAY, .FIXED_LEN_BYTE_ARRAY => T == []const u8 or T == []u8,
     };
 }
 
@@ -90,7 +91,11 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                     }
                     break :blk values;
                 },
-                .BYTE_STREAM_SPLIT => try decoding.decodeByteStreamSplit(Inner, arena, num_encoded_values, decoder),
+                .BYTE_STREAM_SPLIT => blk: {
+                    const buf = try arena.alloc(Inner, num_encoded_values);
+                    try physical.byteStreamSplit(Inner, arena, decoder, buf);
+                    break :blk buf;
+                },
                 else => {
                     std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
                     return error.UnsupportedEncoding;
@@ -136,24 +141,32 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
 
             const decoder = try decoderForPage(arena, reader, metadata.codec);
 
-            const encoded_values = switch (data_page.encoding) {
-                .RLE => blk: {
+            const buf = try arena.alloc(Inner, num_encoded_values);
+            switch (data_page.encoding) {
+                .RLE => {
                     if (Inner != bool) {
                         return error.UnsupportedType;
                     }
 
-                    break :blk try decoding.decodeLenghtPrependedRleBitPackedHybrid(Inner, arena, num_encoded_values, 1, decoder);
+                    try physical.runLengthBitPackingHybridLengthPrepended(Inner, decoder, 1, buf);
                 },
-                .DELTA_BINARY_PACKED => try decoding.decodeDeltaBinaryPacked(Inner, arena, num_encoded_values, decoder),
-                .DELTA_LENGTH_BYTE_ARRAY => try decoding.decodeDeltaLengthByteArray(Inner, arena, num_encoded_values, decoder),
-                .DELTA_BYTE_ARRAY => try decoding.decodeDeltaByteArray(Inner, arena, num_encoded_values, decoder),
+                .DELTA_BINARY_PACKED => {
+                    const num_read = try physical.delta(Inner, arena, decoder, buf);
+                    std.debug.assert(num_read == num_encoded_values);
+                },
+                .DELTA_LENGTH_BYTE_ARRAY => {
+                    try physical.deltaLengthByteArray(Inner, arena, decoder, buf);
+                },
+                .DELTA_BYTE_ARRAY => {
+                    try physical.deltaStrings(Inner, arena, decoder, buf);
+                },
                 else => {
                     std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
                     return error.UnsupportedEncoding;
                 },
-            };
+            }
 
-            return decodeValues(T, arena, num_encoded_values, encoded_values, num_values, def_values);
+            return decodeValues(T, arena, num_encoded_values, buf, num_values, def_values);
         },
         else => {
             std.debug.print("{any} is not supported\n", .{page_header.type});

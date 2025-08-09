@@ -15,7 +15,7 @@ pub fn main() !void {
     std.debug.print("Parsing {s}\n", .{path});
 
     const file = try std.fs.cwd().openFile(path, .{});
-    var read_buffer: [1024]u8 = undefined;
+    var read_buffer: [10240]u8 = undefined;
     var file_reader = file.reader(&read_buffer);
     var parquet_file = try parzig.parquet.File.read(allocator, &file_reader);
     defer parquet_file.deinit();
@@ -57,8 +57,8 @@ pub fn main() !void {
                 .int96 => |data| printValues(i96, data),
                 .float => |data| printValues(f32, data),
                 .double => |data| printValues(f64, data),
-                .byte_array => |data| printValues([]const u8, data),
-                .fixed_len_byte_array => |data| printValues([]const u8, data),
+                .byte_array => |data| printValues([]u8, data),
+                .fixed_len_byte_array => |data| printValues([]u8, data),
             }
         }
     }
