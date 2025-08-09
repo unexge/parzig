@@ -48,7 +48,7 @@ pub fn decodeLenghtPrependedRleBitPackedHybrid(comptime T: type, gpa: std.mem.Al
 pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reader: *Reader) !void {
     var pos: usize = 0;
     while (buf.len > pos) {
-        const header = try std.leb.readUleb128(i64, reader.adaptToOldInterface());
+        const header = try reader.takeLeb128(u64);
         if (header & 1 == 1) {
             // bit packet run
             var bit_reader: BitReader = .init(reader, bit_width);
@@ -84,13 +84,13 @@ pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: us
         return error.UnsupportedType;
     }
 
-    const block_size = try std.leb.readUleb128(usize, reader.adaptToOldInterface());
+    const block_size = try reader.takeLeb128(usize);
     // "the block size __is a multiple of 128__; it is stored as a ULEB128 int"
     if (block_size % 128 != 0) {
         return error.IncorrectBlockSize;
     }
 
-    const miniblock_count = try std.leb.readUleb128(usize, reader.adaptToOldInterface());
+    const miniblock_count = try reader.takeLeb128(usize);
     const miniblock_value_count = block_size / miniblock_count;
     // "the miniblock count per block is a divisor of the block size such that their quotient,
     //  the number of values in a miniblock, __is a multiple of 32__; it is stored as a ULEB128 int"
@@ -98,7 +98,7 @@ pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: us
         return error.IncorrectMiniBlockSize;
     }
 
-    const value_count = try std.leb.readUleb128(usize, reader.adaptToOldInterface());
+    const value_count = try reader.takeLeb128(usize);
     if (value_count != len) {
         std.debug.print("Incorrect value count: {}, expected: {}\n", .{ value_count, len });
         return error.IncorrectValueCount;

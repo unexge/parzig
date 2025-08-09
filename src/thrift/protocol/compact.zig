@@ -6,7 +6,7 @@ pub fn readZigZagInt(comptime T: type, reader: *Reader) !T {
         @compileError("Maximum 64-bit integers are supported");
     }
 
-    const unsigned = try std.leb.readUleb128(u64, reader.adaptToOldInterface());
+    const unsigned = try reader.takeLeb128(u64);
     const decoded = if (unsigned & 1 == 0)
         @as(i128, @intCast(unsigned >> 1))
     else
@@ -20,7 +20,7 @@ pub fn readZigZagInt(comptime T: type, reader: *Reader) !T {
 }
 
 pub fn readBinary(arena: std.mem.Allocator, reader: *Reader) ![]const u8 {
-    const length = try std.leb.readUleb128(u64, reader.adaptToOldInterface());
+    const length = try reader.takeLeb128(u64);
     return reader.readAlloc(arena, length);
 }
 
@@ -62,7 +62,7 @@ pub fn ListReader(comptime E: type) type {
 
             const size_short: u4 = @truncate(header >> 4);
             const size: usize = @intCast(if (size_short == LONG_FORM)
-                try std.leb.readUleb128(i32, reader.adaptToOldInterface())
+                try reader.takeLeb128(u32)
             else
                 size_short);
 
