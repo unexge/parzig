@@ -1,7 +1,15 @@
 const std = @import("std");
+const Reader = std.Io.Reader;
+const bitReader = @import("../bit_reader.zig").bitReader;
 const protocol_compact = @import("../thrift.zig").protocol_compact;
 
-pub fn decodePlain(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
+inline fn readInt(comptime T: type, reader: *Reader) !T {
+    var buf: [@typeInfo(T).int.bits / 8]u8 = undefined;
+    try reader.readSliceAll(&buf);
+    return std.mem.readInt(T, &buf, .little);
+}
+
+pub fn decodePlain(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: *Reader) ![]T {
     if (T == bool) {
         return @ptrCast(try decodeBitPacked(u1, gpa, len, 1, reader));
     }
@@ -9,46 +17,50 @@ pub fn decodePlain(comptime T: type, gpa: std.mem.Allocator, len: usize, reader:
     const buf = try gpa.alloc(T, len);
     for (0..len) |i| {
         if (T == []const u8) {
-            const num_bytes = try reader.readInt(u32, .little);
+            const num_bytes = try readInt(u32, reader);
             const elem_buf = try gpa.alloc(u8, num_bytes);
-            _ = try reader.readAll(elem_buf);
+            _ = try reader.readSliceAll(elem_buf);
             buf[i] = elem_buf;
         } else if (T == f32) {
-            buf[i] = @bitCast(try reader.readInt(u32, .little));
+            buf[i] = @bitCast(try readInt(u32, reader));
         } else if (T == f64) {
-            buf[i] = @bitCast(try reader.readInt(u64, .little));
+            buf[i] = @bitCast(try readInt(u64, reader));
         } else {
-            buf[i] = try reader.readInt(T, .little);
+            buf[i] = try readInt(T, reader);
         }
     }
     return buf;
 }
 
-pub fn decodeRleDictionary(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
-    const bit_width = try reader.readByte();
+pub fn decodeRleDictionary(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: *Reader) ![]T {
+    const bit_width = try reader.takeByte();
     const buf = try gpa.alloc(T, len);
     try decodeRleBitPackedHybrid(T, buf, bit_width, reader);
     return buf;
 }
 
-pub fn decodeLenghtPrependedRleBitPackedHybrid(comptime T: type, gpa: std.mem.Allocator, len: usize, bit_width: u8, reader: anytype) ![]T {
-    const lenght = try reader.readVarInt(u32, .little, 4);
+pub fn decodeLenghtPrependedRleBitPackedHybrid(comptime T: type, gpa: std.mem.Allocator, len: usize, bit_width: u8, reader: *Reader) ![]T {
+    var length_buf: [4]u8 = undefined;
+    try reader.readSliceAll(&length_buf);
+
+    const lenght = std.mem.readVarInt(u32, &length_buf, .little);
     if (lenght == 0) return error.EmptyBuffer;
 
-    var limited_reader = std.io.limitedReader(reader, @intCast(lenght));
+    var limited_buf: [1024]u8 = undefined;
+    var limited_reader = reader.limited(.limited(lenght), &limited_buf);
 
     const values = try gpa.alloc(T, len);
-    try decodeRleBitPackedHybrid(T, values, bit_width, limited_reader.reader());
+    try decodeRleBitPackedHybrid(T, values, bit_width, &limited_reader.interface);
     return values;
 }
 
-pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reader: anytype) !void {
+pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reader: *Reader) !void {
     var pos: usize = 0;
     while (buf.len > pos) {
-        const header = try std.leb.readUleb128(i64, reader);
+        const header = try std.leb.readUleb128(i64, reader.adaptToOldInterface());
         if (header & 1 == 1) {
             // bit packet run
-            var bit_reader = std.io.bitReader(.little, reader);
+            var bit_reader = bitReader(.little, reader.adaptToOldInterface());
             const len = @min(buf.len - pos, @as(usize, @intCast((header >> 1) * 8)));
             for (0..len) |i| {
                 buf[pos + i] = try bit_reader.readBitsNoEof(T, bit_width);
@@ -56,7 +68,7 @@ pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reade
             pos += len;
         } else {
             // rle run
-            var bit_reader = std.io.bitReader(.little, reader);
+            var bit_reader = bitReader(.little, reader.adaptToOldInterface());
             const len = @min(buf.len - pos, @as(usize, @intCast(header >> 1)));
             const val = try bit_reader.readBitsNoEof(T, bit_width);
             for (0..len) |i| {
@@ -67,27 +79,27 @@ pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reade
     }
 }
 
-pub fn decodeBitPacked(comptime T: type, gpa: std.mem.Allocator, len: usize, bit_width: u8, reader: anytype) ![]T {
+pub fn decodeBitPacked(comptime T: type, gpa: std.mem.Allocator, len: usize, bit_width: u8, reader: *Reader) ![]T {
     const values = try gpa.alloc(T, len);
-    var bit_reader = std.io.bitReader(.little, reader);
+    var bit_reader = bitReader(.little, reader.adaptToOldInterface());
     for (0..len) |i| {
         values[i] = try bit_reader.readBitsNoEof(T, bit_width);
     }
     return values;
 }
 
-pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
+pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: *Reader) ![]T {
     if (T != i32 and T != i64) {
         return error.UnsupportedType;
     }
 
-    const block_size = try std.leb.readUleb128(usize, reader);
+    const block_size = try std.leb.readUleb128(usize, reader.adaptToOldInterface());
     // "the block size __is a multiple of 128__; it is stored as a ULEB128 int"
     if (block_size % 128 != 0) {
         return error.IncorrectBlockSize;
     }
 
-    const miniblock_count = try std.leb.readUleb128(usize, reader);
+    const miniblock_count = try std.leb.readUleb128(usize, reader.adaptToOldInterface());
     const miniblock_value_count = block_size / miniblock_count;
     // "the miniblock count per block is a divisor of the block size such that their quotient,
     //  the number of values in a miniblock, __is a multiple of 32__; it is stored as a ULEB128 int"
@@ -95,7 +107,7 @@ pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: us
         return error.IncorrectMiniBlockSize;
     }
 
-    const value_count = try std.leb.readUleb128(usize, reader);
+    const value_count = try std.leb.readUleb128(usize, reader.adaptToOldInterface());
     if (value_count != len) {
         std.debug.print("Incorrect value count: {}, expected: {}\n", .{ value_count, len });
         return error.IncorrectValueCount;
@@ -117,9 +129,9 @@ pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: us
 
     while (value_count > read) {
         const min_delta = try protocol_compact.readZigZagInt(T, reader);
-        try reader.readNoEof(bit_widths);
+        try reader.readSliceAll(bit_widths);
 
-        var bit_reader = std.io.bitReader(.little, reader);
+        var bit_reader = bitReader(.little, reader.adaptToOldInterface());
 
         for (bit_widths) |bit_width| {
             if (read == value_count) {
@@ -144,7 +156,7 @@ pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: us
     return result;
 }
 
-pub fn decodeDeltaLengthByteArray(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
+pub fn decodeDeltaLengthByteArray(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: *Reader) ![]T {
     if (T != []const u8) {
         return error.UnsupportedType;
     }
@@ -156,10 +168,7 @@ pub fn decodeDeltaLengthByteArray(comptime T: type, gpa: std.mem.Allocator, len:
     }
 
     const buf = try gpa.alloc(u8, total_length);
-    const read = try reader.readAll(buf);
-    if (read != total_length) {
-        return error.MissingData;
-    }
+    try reader.readSliceAll(buf);
 
     const values = try gpa.alloc(T, len);
     var pos: usize = 0;
@@ -172,7 +181,7 @@ pub fn decodeDeltaLengthByteArray(comptime T: type, gpa: std.mem.Allocator, len:
     return values;
 }
 
-pub fn decodeDeltaByteArray(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
+pub fn decodeDeltaByteArray(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: *Reader) ![]T {
     if (T != []const u8) {
         return error.UnsupportedType;
     }
@@ -196,7 +205,7 @@ pub fn decodeDeltaByteArray(comptime T: type, gpa: std.mem.Allocator, len: usize
     return suffixes;
 }
 
-pub fn decodeByteStreamSplit(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: anytype) ![]T {
+pub fn decodeByteStreamSplit(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: *Reader) ![]T {
     if (T != f32 and T != f64) {
         return error.UnsupportedType;
     }
@@ -206,7 +215,7 @@ pub fn decodeByteStreamSplit(comptime T: type, gpa: std.mem.Allocator, len: usiz
     const size = Bytesize * len;
 
     const buf = try gpa.alloc(u8, size);
-    try reader.readNoEof(buf);
+    try reader.readSliceAll(buf);
 
     const values = try gpa.alloc(T, len);
     for (0..len) |i| {
@@ -226,21 +235,21 @@ pub fn decodeByteStreamSplit(comptime T: type, gpa: std.mem.Allocator, len: usiz
 test "rle decode i32" {
     // Test data: 0-7 with bit width 3
     // 00000011 10001000 11000110 11111010
-    var fbs = std.io.fixedBufferStream(&[_]u8{ 0x03, 0x88, 0xC6, 0xFA });
+    var r: Reader = .fixed(&[_]u8{ 0x03, 0x88, 0xC6, 0xFA });
     var buf: [8]i32 = undefined;
-    try decodeRleBitPackedHybrid(i32, &buf, 3, fbs.reader());
+    try decodeRleBitPackedHybrid(i32, &buf, 3, &r);
     try std.testing.expectEqualSlices(i32, &[_]i32{ 0, 1, 2, 3, 4, 5, 6, 7 }, &buf);
 }
 
 test "rle decode bool" {
     // RLE test data: 50 1s followed by 50 0s
     // 01100100 00000001 01100100 00000000
-    var data1 = std.io.fixedBufferStream(&[_]u8{ 0x64, 0x01, 0x64, 0x00 });
+    var data1: Reader = .fixed(&[_]u8{ 0x64, 0x01, 0x64, 0x00 });
 
     // Bit-packing test data: alternating 1s and 0s, 100 total
     // 100 / 8 = 13 groups
     // 00011011 10101010 ... 00001010
-    var data2 = std.io.fixedBufferStream(&[_]u8{
+    var data2: Reader = .fixed(&[_]u8{
         0x1B, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
         0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0x0A,
     });
@@ -251,7 +260,7 @@ test "rle decode bool" {
         for (0..100) |i| {
             expected[i] = if (i < 50) 1 else 0;
         }
-        try decodeRleBitPackedHybrid(u1, &buf, 1, data1.reader());
+        try decodeRleBitPackedHybrid(u1, &buf, 1, &data1);
         try std.testing.expectEqualSlices(u1, &expected, &buf);
     }
 
@@ -261,7 +270,7 @@ test "rle decode bool" {
         for (0..100) |i| {
             expected[i] = if (i % 2 != 0) 1 else 0;
         }
-        try decodeRleBitPackedHybrid(u1, &buf, 1, data2.reader());
+        try decodeRleBitPackedHybrid(u1, &buf, 1, &data2);
         try std.testing.expectEqualSlices(u1, &expected, &buf);
     }
 }

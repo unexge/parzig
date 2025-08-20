@@ -1,4 +1,5 @@
 const std = @import("std");
+const Reader = std.io.Reader;
 
 const parquet_schema = @import("../generated/parquet.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
@@ -33,32 +34,31 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
     }
 
     const arena = file.arena.allocator();
-    var source = file.source;
 
     const levels = try file.repAndDefLevelOfColumn(metadata.path_in_schema);
     const rep_level = levels[0];
     const def_level = levels[1];
 
-    try source.seekTo(@intCast(metadata.data_page_offset));
+    try file.file_reader.seekTo(@intCast(metadata.data_page_offset));
 
     const page_header_reader = protocol_compact.StructReader(parquet_schema.PageHeader);
-    const page_header = try page_header_reader.read(arena, source.reader());
+    const page_header = try page_header_reader.read(arena, &file.file_reader.interface);
     switch (page_header.type) {
         .DATA_PAGE => {
             const data_page = page_header.data_page_header.?;
             const num_values: usize = @intCast(data_page.num_values);
             var num_encoded_values = num_values;
 
-            const decoder = try decoderForPage(arena, file.source.reader(), metadata.codec, page_header.compressed_page_size);
+            var decoder = try decoderForPage(arena, &file.file_reader.interface, metadata.codec);
 
             if (rep_level > 0) {
-                const values = try file.readLevelDataV1(decoder, rep_level, num_values);
+                const values = try file.readLevelDataV1(&decoder, rep_level, num_values);
                 defer arena.free(values);
             }
 
             var def_values: []u16 = undefined;
             if (def_level > 0) {
-                def_values = try file.readLevelDataV1(decoder, def_level, num_values);
+                def_values = try file.readLevelDataV1(&decoder, def_level, num_values);
 
                 num_encoded_values = blk: {
                     var i: usize = 0;
@@ -73,17 +73,16 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
             }
 
             const encoded_values = switch (data_page.encoding) {
-                .PLAIN => try decoding.decodePlain(Inner, arena, num_encoded_values, decoder),
+                .PLAIN => try decoding.decodePlain(Inner, arena, num_encoded_values, &decoder),
                 .PLAIN_DICTIONARY, .RLE_DICTIONARY => blk: {
-                    const indices = try decoding.decodeRleDictionary(u32, arena, num_encoded_values, decoder);
+                    const indices = try decoding.decodeRleDictionary(u32, arena, num_encoded_values, &decoder);
 
-                    try source.seekTo(@intCast(metadata.dictionary_page_offset.?));
-                    const dict_page_header = try page_header_reader.read(arena, source.reader());
+                    try file.file_reader.seekTo(@intCast(metadata.dictionary_page_offset.?));
+                    const dict_page_header = try page_header_reader.read(arena, &file.file_reader.interface);
                     const header = dict_page_header.dictionary_page_header.?;
 
-                    const decoder_for_dict = try decoderForPage(arena, file.source.reader(), metadata.codec, dict_page_header.compressed_page_size);
-
-                    const dict_values = try decoding.decodePlain(Inner, arena, @intCast(header.num_values), decoder_for_dict);
+                    var dict_decoder = try decoderForPage(arena, &file.file_reader.interface, metadata.codec);
+                    const dict_values = try decoding.decodePlain(Inner, arena, @intCast(header.num_values), &dict_decoder);
 
                     const values = try arena.alloc(Inner, indices.len);
                     for (indices, 0..) |idx, i| {
@@ -91,7 +90,7 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                     }
                     break :blk values;
                 },
-                .BYTE_STREAM_SPLIT => try decoding.decodeByteStreamSplit(Inner, arena, num_encoded_values, decoder),
+                .BYTE_STREAM_SPLIT => try decoding.decodeByteStreamSplit(Inner, arena, num_encoded_values, &decoder),
                 else => {
                     std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
                     return error.UnsupportedEncoding;
@@ -106,19 +105,19 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
             const num_nulls: usize = @intCast(data_page.num_nulls);
             const num_encoded_values = num_values - num_nulls;
 
-            const reader = file.source.reader();
+            var reader = file.file_reader.interface;
 
             if (rep_level > 0) {
-                const values = try file.readLevelDataV2(reader, rep_level, num_values, @intCast(data_page.repetition_levels_byte_length));
+                const values = try file.readLevelDataV2(&reader, rep_level, num_values, @intCast(data_page.repetition_levels_byte_length));
                 defer arena.free(values);
             } else if (data_page.repetition_levels_byte_length > 0) {
-                try reader.skipBytes(@intCast(data_page.repetition_levels_byte_length), .{});
+                try file.file_reader.seekBy(@intCast(data_page.repetition_levels_byte_length));
             }
 
             var def_values: []u16 = undefined;
             const has_def_values = def_level > 0 and data_page.definition_levels_byte_length > 0;
             if (has_def_values) {
-                def_values = try file.readLevelDataV2(reader, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
+                def_values = try file.readLevelDataV2(&reader, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
 
                 std.debug.assert(num_encoded_values == blk: {
                     var i: usize = 0;
@@ -132,7 +131,7 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 if (has_def_values) arena.free(def_values);
             }
 
-            const decoder = try decoderForPage(arena, reader, metadata.codec, page_header.compressed_page_size);
+            var decoder = try decoderForPage(arena, &reader, metadata.codec);
 
             const encoded_values = switch (data_page.encoding) {
                 .RLE => blk: {
@@ -140,11 +139,11 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                         return error.UnsupportedType;
                     }
 
-                    break :blk try decoding.decodeLenghtPrependedRleBitPackedHybrid(Inner, arena, num_encoded_values, 1, decoder);
+                    break :blk try decoding.decodeLenghtPrependedRleBitPackedHybrid(Inner, arena, num_encoded_values, 1, &decoder);
                 },
-                .DELTA_BINARY_PACKED => try decoding.decodeDeltaBinaryPacked(Inner, arena, num_encoded_values, decoder),
-                .DELTA_LENGTH_BYTE_ARRAY => try decoding.decodeDeltaLengthByteArray(Inner, arena, num_encoded_values, decoder),
-                .DELTA_BYTE_ARRAY => try decoding.decodeDeltaByteArray(Inner, arena, num_encoded_values, decoder),
+                .DELTA_BINARY_PACKED => try decoding.decodeDeltaBinaryPacked(Inner, arena, num_encoded_values, &decoder),
+                .DELTA_LENGTH_BYTE_ARRAY => try decoding.decodeDeltaLengthByteArray(Inner, arena, num_encoded_values, &decoder),
+                .DELTA_BYTE_ARRAY => try decoding.decodeDeltaByteArray(Inner, arena, num_encoded_values, &decoder),
                 else => {
                     std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
                     return error.UnsupportedEncoding;
@@ -196,23 +195,25 @@ inline fn decodeValues(
     return values;
 }
 
-inline fn decoderForPage(gpa: std.mem.Allocator, inner_reader: anytype, codec: parquet_schema.CompressionCodec, size: i32) !std.io.AnyReader {
-    var limited_reader = std.io.limitedReader(inner_reader, @intCast(size));
+fn decoderForPage(arena: std.mem.Allocator, inner_reader: *Reader, codec: parquet_schema.CompressionCodec) !Reader {
     return switch (codec) {
-        .GZIP => blk: {
-            var decompressor = std.compress.gzip.decompressor(limited_reader.reader());
-            break :blk decompressor.reader().any();
-        },
-        .SNAPPY => blk: {
-            var decompressor = compress.snappy.decoder(limited_reader.reader(), gpa);
-            break :blk decompressor.reader().any();
-        },
+        // .GZIP => blk: {
+        //     var decompressor = std.compress.gzip.decompressor(limited_reader.reader());
+        //     break :blk decompressor.reader().any();
+        // },
+        // .SNAPPY => blk: {
+        //     var decompressor = compress.snappy.decoder(limited_reader.interface.adaptToOldInterface(), gpa);
+        //     break :blk decompressor.reader().any();
+        // },
         .ZSTD => blk: {
-            const window_buffer = try gpa.alloc(u8, std.compress.zstd.DecompressorOptions.default_window_buffer_len);
-            var decompressor = std.compress.zstd.decompressor(limited_reader.reader(), .{ .verify_checksum = false, .window_buffer = window_buffer });
-            break :blk decompressor.reader().any();
+            const buf = try arena.alloc(u8, std.compress.zstd.default_window_len + std.compress.zstd.block_size_max);
+            const decompress = try arena.create(std.compress.zstd.Decompress);
+            decompress.* = std.compress.zstd.Decompress.init(inner_reader, buf, .{
+                .window_len = std.compress.zstd.default_window_len,
+            });
+            break :blk decompress.*.reader;
         },
-        .UNCOMPRESSED => limited_reader.reader().any(),
+        .UNCOMPRESSED => inner_reader.*,
         else => {
             std.debug.print("Unsupported codec: {any}\n", .{codec});
             return error.UnsupportedCodec;

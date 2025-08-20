@@ -15,8 +15,9 @@ pub fn main() !void {
     std.debug.print("Parsing {s}\n", .{path});
 
     const file = try std.fs.cwd().openFile(path, .{});
-    const source = std.io.StreamSource{ .file = file };
-    var parquet_file = try parzig.parquet.File.read(allocator, source);
+    var read_buffer: [1024]u8 = undefined;
+    var file_reader = file.reader(&read_buffer);
+    var parquet_file = try parzig.parquet.File.read(allocator, &file_reader);
     defer parquet_file.deinit();
 
     std.debug.print("File Metadata:\n", .{});

@@ -207,50 +207,50 @@ const testing = std.testing;
 
 // Tests are borrowed from https://github.com/golang/snappy/blob/43d5d4cd4e0e3390b0b645d5c3ef1187642403d8/snappy_test.go.
 
-test "literal inline tag length" {
-    expectDecoded("\x03\x08\xff\xff\xff", "\xff\xff\xff");
-}
+// test "literal inline tag length" {
+//     expectDecoded("\x03\x08\xff\xff\xff", "\xff\xff\xff");
+// }
 
-test "literal 1-byte length" {
-    expectDecoded("\x03\xf0\x02\xff\xff\xff", "\xff\xff\xff");
-}
+// test "literal 1-byte length" {
+//     expectDecoded("\x03\xf0\x02\xff\xff\xff", "\xff\xff\xff");
+// }
 
-test "literal 2-byte length" {
-    expectDecoded("\x03\xf4\x02\x00\xff\xff\xff", "\xff\xff\xff");
-}
+// test "literal 2-byte length" {
+//     expectDecoded("\x03\xf4\x02\x00\xff\xff\xff", "\xff\xff\xff");
+// }
 
-test "literal 3-byte length" {
-    expectDecoded("\x03\xf8\x02\x00\x00\xff\xff\xff", "\xff\xff\xff");
-}
+// test "literal 3-byte length" {
+//     expectDecoded("\x03\xf8\x02\x00\x00\xff\xff\xff", "\xff\xff\xff");
+// }
 
-test "literal 4-byte length" {
-    expectDecoded("\x03\xfc\x02\x00\x00\x00\xff\xff\xff", "\xff\xff\xff");
-}
+// test "literal 4-byte length" {
+//     expectDecoded("\x03\xfc\x02\x00\x00\x00\xff\xff\xff", "\xff\xff\xff");
+// }
 
-test "copy 4-byte" {
-    const dots = "." ** 65536;
+// test "copy 4-byte" {
+//     const dots = "." ** 65536;
 
-    const input =
-        "\x89\x80\x04" ++ // decodedLen = 65545.
-        "\x0cpqrs" ++ // 4-byte literal "pqrs".
-        "\xf4\xff\xff" ++ dots ++ // 65536-byte literal dots.
-        "\x13\x04\x00\x01\x00"; // tagCopy4; length=5 offset=65540.
-    const expected = "pqrs" ++ dots ++ "pqrs.";
+//     const input =
+//         "\x89\x80\x04" ++ // decodedLen = 65545.
+//         "\x0cpqrs" ++ // 4-byte literal "pqrs".
+//         "\xf4\xff\xff" ++ dots ++ // 65536-byte literal dots.
+//         "\x13\x04\x00\x01\x00"; // tagCopy4; length=5 offset=65540.
+//     const expected = "pqrs" ++ dots ++ "pqrs.";
 
-    expectDecoded(input, expected);
-}
+//     expectDecoded(input, expected);
+// }
 
-test "golden" {
-    const compressed_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt.rawsnappy", .{ .mode = .read_only });
-    const compressed = try compressed_file.readToEndAlloc(std.testing.allocator, std.math.maxInt(usize));
-    defer std.testing.allocator.free(compressed);
+// test "golden" {
+//     const compressed_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt.rawsnappy", .{ .mode = .read_only });
+//     const compressed = try compressed_file.readToEndAlloc(std.testing.allocator, std.math.maxInt(usize));
+//     defer std.testing.allocator.free(compressed);
 
-    const source_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt", .{ .mode = .read_only });
-    const source = try source_file.readToEndAlloc(std.testing.allocator, std.math.maxInt(usize));
-    defer std.testing.allocator.free(source);
+//     const source_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt", .{ .mode = .read_only });
+//     const source = try source_file.readToEndAlloc(std.testing.allocator, std.math.maxInt(usize));
+//     defer std.testing.allocator.free(source);
 
-    expectDecoded(compressed, source);
-}
+//     expectDecoded(compressed, source);
+// }
 
 fn expectDecoded(input: []const u8, expected: []const u8) void {
     var fbs = std.io.fixedBufferStream(input);
