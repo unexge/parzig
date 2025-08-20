@@ -4,6 +4,7 @@ pub fn OrderedStringHashMap(comptime T: anytype) type {
     return struct {
         const Self = @This();
 
+        gpa: std.mem.Allocator,
         map: std.StringHashMap(T),
         keys: std.ArrayList([]const u8),
 
@@ -22,10 +23,11 @@ pub fn OrderedStringHashMap(comptime T: anytype) type {
             }
         };
 
-        pub fn init(allocator: std.mem.Allocator) Self {
+        pub fn init(gpa: std.mem.Allocator) Self {
             return Self{
-                .map = std.StringHashMap(T).init(allocator),
-                .keys = std.ArrayList([]const u8).init(allocator),
+                .gpa = gpa,
+                .map = std.StringHashMap(T).init(gpa),
+                .keys = .empty,
             };
         }
 
@@ -35,7 +37,7 @@ pub fn OrderedStringHashMap(comptime T: anytype) type {
 
         pub fn put(self: *Self, key: []const u8, value: T) !void {
             if (!self.map.contains(key)) {
-                try self.keys.append(key);
+                try self.keys.append(self.gpa, key);
             }
             try self.map.put(key, value);
         }
@@ -54,7 +56,7 @@ pub fn OrderedStringHashMap(comptime T: anytype) type {
 
         pub fn deinit(self: *Self) void {
             self.map.deinit();
-            self.keys.deinit();
+            self.keys.deinit(self.gpa);
         }
     };
 }
