@@ -10,16 +10,16 @@ pub const protocol_compact = @import("./thrift/protocol/compact.zig");
 pub const translate = @import("./thrift/translate.zig").translate;
 
 pub const Document = struct {
+    arena: std.heap.ArenaAllocator,
+
     headers: std.ArrayList(Header),
     definitions: std.ArrayList(Definition),
 
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator, source: []const u8) !Document {
+    pub fn init(gpa: std.mem.Allocator, source: []const u8) !Document {
         var document = Document{
-            .definitions = std.ArrayList(Definition).init(allocator),
-            .headers = std.ArrayList(Header).init(allocator),
-            .allocator = allocator,
+            .arena = .init(gpa),
+            .definitions = .empty,
+            .headers = .empty,
         };
         errdefer document.deinit();
         try document.parse(source);
@@ -27,29 +27,7 @@ pub const Document = struct {
     }
 
     pub fn deinit(self: *Document) void {
-        for (self.definitions.items) |*definition| {
-            switch (definition.*) {
-                .@"enum" => |*e| {
-                    e.values.deinit();
-                },
-                .@"struct" => |*s| {
-                    var iter = s.fields.valueIterator();
-                    while (iter.next()) |f| {
-                        f.deinit(self.allocator);
-                    }
-                    s.fields.deinit();
-                },
-                .@"union" => |*s| {
-                    var iter = s.fields.valueIterator();
-                    while (iter.next()) |f| {
-                        f.deinit(self.allocator);
-                    }
-                    s.fields.deinit();
-                },
-            }
-        }
-        self.headers.deinit();
-        self.definitions.deinit();
+        self.arena.deinit();
     }
 
     fn parse(self: *Document, source: []const u8) !void {
@@ -58,7 +36,7 @@ pub const Document = struct {
         while (true) {
             skipComments(&scanner);
             if (try Header.parse(&scanner)) |header| {
-                try self.headers.append(header);
+                try self.headers.append(self.arena.allocator(), header);
             } else {
                 break;
             }
@@ -66,11 +44,11 @@ pub const Document = struct {
 
         while (true) {
             skipComments(&scanner);
-            const def = Definition.parse(self.allocator, &scanner);
+            const def = Definition.parse(self.arena.allocator(), &scanner);
             if (def == error.EndOfDocument) {
                 break;
             }
-            try self.definitions.append(try def);
+            try self.definitions.append(self.arena.allocator(), try def);
             skipComments(&scanner);
         }
     }

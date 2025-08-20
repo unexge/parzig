@@ -1,11 +1,12 @@
 const std = @import("std");
+const Reader = std.Io.Reader;
 
-pub fn readZigZagInt(comptime T: type, reader: anytype) !T {
+pub fn readZigZagInt(comptime T: type, reader: *Reader) !T {
     if (@sizeOf(T) > @sizeOf(i64)) {
         @compileError("Maximum 64-bit integers are supported");
     }
 
-    const unsigned = try std.leb.readUleb128(u64, reader);
+    const unsigned = try std.leb.readUleb128(u64, reader.adaptToOldInterface());
     const decoded = if (unsigned & 1 == 0)
         @as(i128, @intCast(unsigned >> 1))
     else
@@ -18,11 +19,9 @@ pub fn readZigZagInt(comptime T: type, reader: anytype) !T {
     return @intCast(decoded);
 }
 
-pub fn readBinary(arena: std.mem.Allocator, reader: anytype) ![]const u8 {
-    const lenght = try std.leb.readUleb128(u64, reader);
-    const buf = try arena.alloc(u8, @intCast(lenght));
-    try reader.readNoEof(buf);
-    return buf;
+pub fn readBinary(arena: std.mem.Allocator, reader: *Reader) ![]const u8 {
+    const length = try std.leb.readUleb128(u64, reader.adaptToOldInterface());
+    return reader.readAlloc(arena, length);
 }
 
 fn unwrapOptional(comptime T: type) type {
@@ -58,12 +57,12 @@ pub fn ListReader(comptime E: type) type {
     };
 
     return struct {
-        pub fn read(arena: std.mem.Allocator, reader: anytype) ![]E {
-            const header = try reader.readByte();
+        pub fn read(arena: std.mem.Allocator, reader: *Reader) ![]E {
+            const header = try reader.takeByte();
 
             const size_short: u4 = @truncate(header >> 4);
             const size: usize = @intCast(if (size_short == LONG_FORM)
-                try std.leb.readUleb128(i32, reader)
+                try std.leb.readUleb128(i32, reader.adaptToOldInterface())
             else
                 size_short);
 
@@ -181,6 +180,7 @@ pub fn StructReader(comptime T: type) type {
 
     const field_types = blk: {
         var field_types: [max_field_id]type = undefined;
+        @setEvalBranchQuota(3000);
         inline for (fields, 0..) |field, i| {
             field_types[i] = void;
             _ = comptime std.meta.intToEnum(std.meta.FieldEnum(T), i) catch continue;
@@ -202,12 +202,12 @@ pub fn StructReader(comptime T: type) type {
     };
 
     return struct {
-        pub fn read(arena: std.mem.Allocator, reader: anytype) !T {
+        pub fn read(arena: std.mem.Allocator, reader: *Reader) !T {
             var fields_set = std.mem.zeroes([max_field_id]bool);
             var result: T = undefined;
             var last_field_id: i16 = 0;
             while (true) {
-                const header = try reader.readByte();
+                const header = try reader.takeByte();
                 if (header == STOP) {
                     break;
                 }

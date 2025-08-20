@@ -16,7 +16,7 @@ const Context = struct {
     import_std: bool = false,
 
     fn deinit(self: *Context) void {
-        self.buf.deinit();
+        self.buf.deinit(self.allocator);
         self.tokens.deinit(self.allocator);
         self.nodes.deinit(self.allocator);
         self.extra_data.deinit(self.allocator);
@@ -28,7 +28,7 @@ const Context = struct {
             .tag = tag,
             .start = @intCast(self.buf.items.len),
         });
-        try self.buf.writer().writeAll(text);
+        try self.buf.appendSlice(self.allocator, text);
         return @intCast(index);
     }
 
@@ -625,7 +625,7 @@ const Context = struct {
 pub fn translate(allocator: std.mem.Allocator, document: *thrift.Document) !Ast {
     var ctx = Context{
         .allocator = allocator,
-        .buf = std.ArrayList(u8).init(allocator),
+        .buf = .empty,
         .extra_data = .empty,
     };
     defer ctx.deinit();
@@ -658,7 +658,7 @@ pub fn translate(allocator: std.mem.Allocator, document: *thrift.Document) !Ast 
     });
 
     return Ast{
-        .source = try ctx.buf.toOwnedSliceSentinel(0),
+        .source = try ctx.buf.toOwnedSliceSentinel(ctx.allocator, 0),
         .tokens = ctx.tokens.toOwnedSlice(),
         .nodes = ctx.nodes.toOwnedSlice(),
         .extra_data = try ctx.extra_data.toOwnedSlice(ctx.allocator),
@@ -793,7 +793,7 @@ fn expectTranslated(source: []const u8, expected: []const u8) !void {
     defer root.deinit(allocator);
     defer allocator.free(root.source);
 
-    const formatted = try root.render(allocator);
+    const formatted = try root.renderAlloc(allocator);
     defer allocator.free(formatted);
 
     try std.testing.expectEqualStrings(
