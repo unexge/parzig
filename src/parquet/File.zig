@@ -177,17 +177,19 @@ test "reading a row group of a simple file with dynamic types" {
     try std.testing.expectEqualDeep(&[_]?[]const u8{ "a", "b", "c", "d", "e" }, (try rg.readColumnDynamic(2)).byte_array);
 }
 
-// test "reading gzipped file" {
-//     var file = try readTestFile("testdata/gzipped.parquet");
-//     defer file.deinit();
+test "reading gzipped file" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.fs.cwd().openFile("testdata/gzipped.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
 
-//     var rg = file.rowGroup(0);
-//     const questions = try rg.readColumn([]const u8, 0);
-//     const anwsers = try rg.readColumn([]const u8, 1);
+    var rg = file.rowGroup(0);
+    const questions = try rg.readColumn([]const u8, 0);
+    const anwsers = try rg.readColumn([]const u8, 1);
 
-//     try std.testing.expectEqualStrings("Natalia sold clips to 48 of her friends in April, and then she sold half as many clips in May. How many clips did Natalia sell altogether in April and May?", questions[0]);
-//     try std.testing.expectEqualStrings("Natalia sold 48/2 = <<48/2=24>>24 clips in May.\nNatalia sold 48+24 = <<48+24=72>>72 clips altogether in April and May.\n#### 72", anwsers[0]);
-// }
+    try std.testing.expectEqualStrings("Natalia sold clips to 48 of her friends in April, and then she sold half as many clips in May. How many clips did Natalia sell altogether in April and May?", questions[0]);
+    try std.testing.expectEqualStrings("Natalia sold 48/2 = <<48/2=24>>24 clips in May.\nNatalia sold 48+24 = <<48+24=72>>72 clips altogether in April and May.\n#### 72", anwsers[0]);
+}
 
 test "reading simple file with nulls" {
     var reader_buf: [1024]u8 = undefined;
