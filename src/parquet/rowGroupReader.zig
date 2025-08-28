@@ -105,10 +105,10 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
             const num_nulls: usize = @intCast(data_page.num_nulls);
             const num_encoded_values = num_values - num_nulls;
 
-            var reader = file.file_reader.interface;
+            const reader = &file.file_reader.interface;
 
             if (rep_level > 0) {
-                const values = try file.readLevelDataV2(&reader, rep_level, num_values, @intCast(data_page.repetition_levels_byte_length));
+                const values = try file.readLevelDataV2(reader, rep_level, num_values, @intCast(data_page.repetition_levels_byte_length));
                 defer arena.free(values);
             } else if (data_page.repetition_levels_byte_length > 0) {
                 try file.file_reader.seekBy(@intCast(data_page.repetition_levels_byte_length));
@@ -117,7 +117,7 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
             var def_values: []u16 = undefined;
             const has_def_values = def_level > 0 and data_page.definition_levels_byte_length > 0;
             if (has_def_values) {
-                def_values = try file.readLevelDataV2(&reader, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
+                def_values = try file.readLevelDataV2(reader, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
 
                 std.debug.assert(num_encoded_values == blk: {
                     var i: usize = 0;
@@ -131,7 +131,7 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 if (has_def_values) arena.free(def_values);
             }
 
-            const decoder = try decoderForPage(arena, &reader, metadata.codec);
+            const decoder = try decoderForPage(arena, reader, metadata.codec);
 
             const encoded_values = switch (data_page.encoding) {
                 .RLE => blk: {
