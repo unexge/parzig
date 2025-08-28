@@ -203,10 +203,12 @@ fn decoderForPage(arena: std.mem.Allocator, inner_reader: *Reader, codec: parque
             decompress.* = std.compress.flate.Decompress.init(inner_reader, .gzip, buf);
             break :blk &decompress.reader;
         },
-        // .SNAPPY => blk: {
-        //     var decompressor = compress.snappy.decoder(limited_reader.interface.adaptToOldInterface(), gpa);
-        //     break :blk decompressor.reader().any();
-        // },
+        .SNAPPY => blk: {
+            const buf = try arena.alloc(u8, compress.snappy.Decompress.window_len);
+            const decompress = try arena.create(compress.snappy.Decompress);
+            decompress.* = compress.snappy.Decompress.init(inner_reader, buf);
+            break :blk &decompress.reader;
+        },
         .ZSTD => blk: {
             const buf = try arena.alloc(u8, std.compress.zstd.default_window_len + std.compress.zstd.block_size_max);
             const decompress = try arena.create(std.compress.zstd.Decompress);

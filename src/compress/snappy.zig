@@ -1,264 +1,288 @@
 const std = @import("std");
+const Reader = std.Io.Reader;
+const Limit = std.Io.Limit;
+const Writer = std.Io.Writer;
 
-pub fn Decoder(comptime Inner: type) type {
-    return struct {
-        inner: Inner,
-        inner_remaining: usize = std.math.maxInt(usize),
+pub const Decompress = struct {
+    pub const window_len = 65536;
 
-        gpa: std.mem.Allocator,
-        // TODO: Keeping a copy of encoded buffer is not very efficient.
-        //       Maybe this type shouldn't be a reader and return a buffer instead.
-        buffer: []const u8 = undefined,
-        buffer_pos: usize = 0,
+    input: *Reader,
+    remaining: usize,
+    reader: Reader,
 
-        state: union(enum) {
-            length,
-            literal: usize,
-            copy: struct {
-                start: usize,
-                end: usize,
-            },
-            eof,
-        } = .length,
+    state: union(enum) {
+        length,
+        literal: usize,
+        copy: struct {
+            offset: usize,
+            len: usize,
+        },
+        eof,
+    },
 
-        const Element = enum(u2) {
-            literal = 0,
-            copy1b = 1,
-            copy2b = 2,
-            copy4b = 3,
+    const Element = enum(u2) {
+        literal = 0,
+        copy1b = 1,
+        copy2b = 2,
+        copy4b = 3,
 
-            pub fn init(tag: u8) Element {
-                const el: u2 = @truncate(tag);
-                return @enumFromInt(el);
-            }
-        };
-
-        pub const Error = error{
-            Overflow,
-            EndOfStream,
-            OutOfMemory,
-        } || Inner.Error;
-        pub const Reader = std.io.GenericReader(*Self, Error, read);
-
-        const Self = @This();
-
-        pub fn init(inner: Inner, gpa: std.mem.Allocator) Self {
-            return .{ .inner = inner, .gpa = gpa };
-        }
-
-        pub fn deinit(self: *Self) void {
-            self.gpa.free(self.buffer);
-        }
-
-        pub fn reader(self: *Self) Reader {
-            return .{ .context = self };
-        }
-
-        pub fn read(self: *Self, buffer: []u8) Error!usize {
-            var buffer_pos: usize = 0;
-
-            while (buffer_pos < buffer.len and self.inner_remaining > 0) {
-                switch (self.state) {
-                    .eof => {
-                        return buffer_pos;
-                    },
-                    .length => {
-                        self.inner_remaining = try std.leb.readUleb128(u32, self.inner);
-                        self.buffer = try self.gpa.alloc(u8, self.inner_remaining);
-                        try self.readTag();
-                    },
-                    .literal => |remaining| {
-                        if (remaining == 0) {
-                            try self.readTag();
-                            continue;
-                        }
-
-                        const buffer_remaining = buffer.len - buffer_pos;
-                        const to_read = @min(remaining, @min(self.inner_remaining, buffer_remaining));
-                        const buffer_end_pos = buffer_pos + to_read;
-
-                        const n = try self.inner.read(buffer[buffer_pos..buffer_end_pos]);
-                        @memcpy(@constCast(self.buffer[self.buffer_pos..(self.buffer_pos + n)]), buffer[buffer_pos..(buffer_pos + n)]);
-
-                        self.inner_remaining -= n;
-                        self.state.literal -= n;
-                        buffer_pos += n;
-                        self.buffer_pos += n;
-                    },
-                    .copy => |*copy| {
-                        if (copy.*.start >= copy.*.end) {
-                            std.debug.assert(copy.*.start == copy.*.end);
-                            try self.readTag();
-                            continue;
-                        }
-
-                        const copy_remaining = copy.*.end - copy.*.start;
-                        const buffer_remaining = buffer.len - buffer_pos;
-                        var to_read = @min(copy_remaining, buffer_remaining);
-                        std.debug.assert(to_read <= 64);
-
-                        const start_pos = copy.*.start;
-                        var end_pos = start_pos + to_read;
-                        // Copy operation passes the end of the buffer, so we need to limit it.
-                        if (end_pos > self.buffer_pos) {
-                            end_pos = self.buffer_pos;
-                            to_read = end_pos - start_pos;
-                        }
-
-                        const src = self.buffer[start_pos..end_pos];
-
-                        @memcpy(buffer[buffer_pos..(buffer_pos + to_read)], src);
-                        std.mem.copyForwards(u8, @constCast(self.buffer[self.buffer_pos..(self.buffer_pos + to_read)]), src);
-
-                        copy.*.start += to_read;
-                        buffer_pos += to_read;
-                        self.buffer_pos += to_read;
-                    },
-                }
-            }
-
-            return buffer_pos;
-        }
-
-        fn readTag(self: *Self) !void {
-            const tag = try blk: {
-                const tag = self.inner.readByte();
-                if (tag == error.EndOfStream) {
-                    self.state = .eof;
-                    return;
-                }
-                break :blk tag;
-            };
-
-            const tag_higher: u6 = @truncate(tag >> 2);
-
-            switch (Element.init(tag)) {
-                .literal => {
-                    const len: u64 = switch (tag_higher) {
-                        60 => try self.inner.readInt(u8, .little),
-                        61 => try self.inner.readInt(u16, .little),
-                        62 => try self.inner.readInt(u24, .little),
-                        63 => try self.inner.readInt(u32, .little),
-                        else => tag_higher,
-                    };
-
-                    self.state = .{ .literal = len + 1 };
-                },
-                .copy1b => {
-                    const tag_lower: u3 = @truncate(tag_higher);
-                    const len: u8 = @as(u8, @intCast(tag_lower)) + 4;
-
-                    std.debug.assert(len >= 4);
-                    std.debug.assert(len <= 11);
-
-                    const offset_higher: u3 = @truncate(tag_higher >> 3);
-                    const offset_lower = try self.inner.readByte();
-                    const offset: u11 = (@as(u11, offset_higher) << 8) | offset_lower;
-
-                    std.debug.assert(len <= 2047);
-
-                    const start = self.buffer_pos - offset;
-                    const end = start + len;
-
-                    self.state = .{ .copy = .{
-                        .start = start,
-                        .end = end,
-                    } };
-                },
-                .copy2b => {
-                    const len: u8 = @as(u8, tag_higher) + 1;
-                    const offset = try self.inner.readInt(u16, .little);
-
-                    std.debug.assert(len <= 64);
-                    std.debug.assert(offset <= 65535);
-
-                    const start = self.buffer_pos - offset;
-                    const end = start + len;
-
-                    self.state = .{ .copy = .{
-                        .start = start,
-                        .end = end,
-                    } };
-                },
-                .copy4b => {
-                    const len: u8 = tag_higher + 1;
-                    const offset = try self.inner.readInt(u32, .little);
-
-                    std.debug.assert(len <= 64);
-
-                    const start = self.buffer_pos - offset;
-                    const end = start + len;
-
-                    self.state = .{ .copy = .{
-                        .start = start,
-                        .end = end,
-                    } };
-                },
-            }
+        pub fn init(tag: u8) Element {
+            const el: u2 = @truncate(tag);
+            return @enumFromInt(el);
         }
     };
-}
 
-pub fn decoder(reader: anytype, gpa: std.mem.Allocator) Decoder(@TypeOf(reader)) {
-    return Decoder(@TypeOf(reader)).init(reader, gpa);
-}
+    pub fn init(input: *Reader, buffer: []u8) Decompress {
+        return .{
+            .input = input,
+            .remaining = 0,
+            .reader = .{
+                .vtable = &.{
+                    .stream = Decompress.stream,
+                },
+                .buffer = buffer,
+                .seek = 0,
+                .end = 0,
+            },
+            .state = .length,
+        };
+    }
+
+    fn stream(r: *Reader, w: *Writer, limit: Limit) Reader.StreamError!usize {
+        const d: *Decompress = @fieldParentPtr("reader", r);
+        const remaining = @intFromEnum(limit);
+
+        read: switch (d.state) {
+            .eof => {
+                return error.EndOfStream;
+            },
+            .length => {
+                const size = d.input.takeLeb128(u32) catch |err| {
+                    switch (err) {
+                        error.Overflow => return error.ReadFailed,
+                        else => |other| return other,
+                    }
+                };
+                d.remaining = @intCast(size);
+                try d.readTag();
+                std.debug.assert(d.state != .length);
+                continue :read d.state;
+            },
+            .literal => |*literal_remaining| {
+                if (literal_remaining.* == 0) {
+                    try d.readTag();
+                    continue :read d.state;
+                }
+
+                const out = limit.min(@enumFromInt(literal_remaining.*)).min(@enumFromInt(d.remaining)).slice(try w.writableSliceGreedyPreserve(Decompress.window_len, 1));
+                try d.input.readSliceAll(out);
+
+                literal_remaining.* -= out.len;
+                d.remaining -= out.len;
+                w.advance(out.len);
+                return out.len;
+            },
+            .copy => |*copy| {
+                if (copy.len == 0) {
+                    try d.readTag();
+                    continue :read d.state;
+                }
+
+                const n = @min(copy.len, remaining);
+                std.debug.assert(n <= 64);
+
+                const start = w.end - copy.offset;
+                const end = @min(start + n, w.end);
+                const length = end - start;
+
+                const src = w.buffer[start..end];
+                const dst = try w.writableSliceGreedyPreserve(Decompress.window_len, length);
+                @memmove(dst[0..length], src);
+
+                copy.len -= length;
+                d.remaining -= length;
+                w.advance(length);
+
+                return length;
+            },
+        }
+    }
+
+    fn readTag(self: *Decompress) !void {
+        const tag = self.input.takeByte() catch |err| {
+            if (err == error.EndOfStream) {
+                self.state = .eof;
+            }
+            return err;
+        };
+
+        const tag_higher: u6 = @truncate(tag >> 2);
+
+        switch (Element.init(tag)) {
+            .literal => {
+                const len: u64 = switch (tag_higher) {
+                    60 => try self.input.takeInt(u8, .little),
+                    61 => try self.input.takeInt(u16, .little),
+                    62 => try self.input.takeInt(u24, .little),
+                    63 => try self.input.takeInt(u32, .little),
+                    else => tag_higher,
+                };
+
+                self.state = .{ .literal = len + 1 };
+            },
+            .copy1b => {
+                const tag_lower: u3 = @truncate(tag_higher);
+                const len: u8 = @as(u8, @intCast(tag_lower)) + 4;
+
+                std.debug.assert(len >= 4);
+                std.debug.assert(len <= 11);
+
+                const offset_higher: u3 = @truncate(tag_higher >> 3);
+                const offset_lower = try self.input.takeByte();
+                const offset: u11 = (@as(u11, offset_higher) << 8) | offset_lower;
+
+                std.debug.assert(len <= 2047);
+
+                self.state = .{ .copy = .{
+                    .offset = offset,
+                    .len = len,
+                } };
+            },
+            .copy2b => {
+                const len: u8 = @as(u8, tag_higher) + 1;
+                const offset = try self.input.takeInt(u16, .little);
+
+                std.debug.assert(len <= 64);
+                std.debug.assert(offset <= 65535);
+
+                self.state = .{ .copy = .{
+                    .offset = offset,
+                    .len = len,
+                } };
+            },
+            .copy4b => {
+                const len: u8 = tag_higher + 1;
+                const offset = try self.input.takeInt(u32, .little);
+
+                std.debug.assert(len <= 64);
+
+                self.state = .{ .copy = .{
+                    .offset = offset,
+                    .len = len,
+                } };
+            },
+        }
+    }
+};
 
 const testing = std.testing;
 
 // Tests are borrowed from https://github.com/golang/snappy/blob/43d5d4cd4e0e3390b0b645d5c3ef1187642403d8/snappy_test.go.
 
-// test "literal inline tag length" {
-//     expectDecoded("\x03\x08\xff\xff\xff", "\xff\xff\xff");
-// }
+test "literal inline tag length" {
+    try expectDecoded("\x03\x08\xff\xff\xff", "\xff\xff\xff");
+}
 
-// test "literal 1-byte length" {
-//     expectDecoded("\x03\xf0\x02\xff\xff\xff", "\xff\xff\xff");
-// }
+test "literal 1-byte length" {
+    try expectDecoded("\x03\xf0\x02\xff\xff\xff", "\xff\xff\xff");
+}
 
-// test "literal 2-byte length" {
-//     expectDecoded("\x03\xf4\x02\x00\xff\xff\xff", "\xff\xff\xff");
-// }
+test "literal 2-byte length" {
+    try expectDecoded("\x03\xf4\x02\x00\xff\xff\xff", "\xff\xff\xff");
+}
 
-// test "literal 3-byte length" {
-//     expectDecoded("\x03\xf8\x02\x00\x00\xff\xff\xff", "\xff\xff\xff");
-// }
+test "literal 3-byte length" {
+    try expectDecoded("\x03\xf8\x02\x00\x00\xff\xff\xff", "\xff\xff\xff");
+}
 
-// test "literal 4-byte length" {
-//     expectDecoded("\x03\xfc\x02\x00\x00\x00\xff\xff\xff", "\xff\xff\xff");
-// }
+test "literal 4-byte length" {
+    try expectDecoded("\x03\xfc\x02\x00\x00\x00\xff\xff\xff", "\xff\xff\xff");
+}
 
-// test "copy 4-byte" {
-//     const dots = "." ** 65536;
+test "copy 1-byte" {
+    {
+        const input = "\x0d" ++ // decodedLen=13;
+            "\x0cabcd" ++ // tagLiteral (4 bytes "abcd");
+            "\x15\x04"; // tagCopy1; length=9 offset=4;
+        const expected = "abcdabcdabcda";
 
-//     const input =
-//         "\x89\x80\x04" ++ // decodedLen = 65545.
-//         "\x0cpqrs" ++ // 4-byte literal "pqrs".
-//         "\xf4\xff\xff" ++ dots ++ // 65536-byte literal dots.
-//         "\x13\x04\x00\x01\x00"; // tagCopy4; length=5 offset=65540.
-//     const expected = "pqrs" ++ dots ++ "pqrs.";
+        try expectDecoded(input, expected);
+    }
 
-//     expectDecoded(input, expected);
-// }
+    {
+        const input = "\x08" ++ // decodedLen=8;
+            "\x0cabcd" ++ // tagLiteral (4 bytes "abcd");
+            "\x01\x04"; // tagCopy1; length=4 offset=4;
+        const expected = "abcdabcd";
 
-// test "golden" {
-//     const compressed_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt.rawsnappy", .{ .mode = .read_only });
-//     const compressed = try compressed_file.readToEndAlloc(std.testing.allocator, std.math.maxInt(usize));
-//     defer std.testing.allocator.free(compressed);
+        try expectDecoded(input, expected);
+    }
 
-//     const source_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt", .{ .mode = .read_only });
-//     const source = try source_file.readToEndAlloc(std.testing.allocator, std.math.maxInt(usize));
-//     defer std.testing.allocator.free(source);
+    {
+        const input = "\x08" ++ // decodedLen=8;
+            "\x0cabcd" ++ // tagLiteral (4 bytes "abcd");
+            "\x01\x02"; // tagCopy1; length=4 offset=2;
+        const expected = "abcdcdcd";
 
-//     expectDecoded(compressed, source);
-// }
+        try expectDecoded(input, expected);
+    }
 
-fn expectDecoded(input: []const u8, expected: []const u8) void {
-    var fbs = std.io.fixedBufferStream(input);
-    var dec = decoder(fbs.reader(), testing.allocator);
-    defer dec.deinit();
+    {
+        const input = "\x08" ++ // decodedLen=8;
+            "\x0cabcd" ++ // tagLiteral (4 bytes "abcd");
+            "\x01\x01"; // tagCopy1; length=4 offset=1;
+        const expected = "abcddddd";
 
-    const decoded = dec.reader().readAllAlloc(testing.allocator, std.math.maxInt(usize)) catch unreachable;
-    defer testing.allocator.free(decoded);
+        try expectDecoded(input, expected);
+    }
+}
 
-    std.testing.expectEqualStrings(expected, decoded) catch unreachable;
+test "copy 2-byte" {
+    const input = "\x06" ++ // decodedLen=6;
+        "\x0cabcd" ++ // tagLiteral (4 bytes "abcd");
+        "\x06\x03\x00"; // tagCopy2; length=2 offset=3;
+    const expected = "abcdbc";
+
+    try expectDecoded(input, expected);
+}
+
+test "copy 4-byte" {
+    const dots = "." ** 65536;
+
+    const input = "\x89\x80\x04" ++ // decodedLen=65545;
+        "\x0cpqrs" ++ // 4-byte literal "pqrs";
+        "\xf4\xff\xff" ++ dots ++ // 65536-byte literal dots;
+        "\x13\x04\x00\x01\x00"; // tagCopy4; length=5 offset=65540;
+    const expected = "pqrs" ++ dots ++ "pqrs.";
+
+    try expectDecoded(input, expected);
+}
+
+test "golden" {
+    const compressed_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt.rawsnappy", .{ .mode = .read_only });
+    var compressed_buf: [1024]u8 = undefined;
+    var compressed_reader = compressed_file.reader(&compressed_buf);
+    const compressed = try compressed_reader.interface.allocRemaining(testing.allocator, .unlimited);
+    defer testing.allocator.free(compressed);
+
+    const source_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt", .{ .mode = .read_only });
+    var source_buf: [1024]u8 = undefined;
+    var source_reader = source_file.reader(&source_buf);
+    const source = try source_reader.interface.allocRemaining(testing.allocator, .unlimited);
+    defer testing.allocator.free(source);
+
+    try expectDecoded(compressed, source);
+}
+
+fn expectDecoded(input: []const u8, expected: []const u8) !void {
+    var fixed: Reader = .fixed(input);
+
+    var decompress_buf: [1024]u8 = undefined;
+    var decompress = Decompress.init(&fixed, &decompress_buf);
+
+    var decoded: Writer.Allocating = .init(testing.allocator);
+    defer decoded.deinit();
+    _ = try decompress.reader.streamRemaining(&decoded.writer);
+
+    try testing.expectEqualStrings(expected, decoded.written());
 }
