@@ -3,12 +3,6 @@ const Reader = std.Io.Reader;
 const bitReader = @import("../bit_reader.zig").bitReader;
 const protocol_compact = @import("../thrift.zig").protocol_compact;
 
-inline fn readInt(comptime T: type, reader: *Reader) !T {
-    var buf: [@typeInfo(T).int.bits / 8]u8 = undefined;
-    try reader.readSliceAll(&buf);
-    return std.mem.readInt(T, &buf, .little);
-}
-
 pub fn decodePlain(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: *Reader) ![]T {
     if (T == bool) {
         return @ptrCast(try decodeBitPacked(u1, gpa, len, 1, reader));
@@ -17,16 +11,16 @@ pub fn decodePlain(comptime T: type, gpa: std.mem.Allocator, len: usize, reader:
     const buf = try gpa.alloc(T, len);
     for (0..len) |i| {
         if (T == []const u8) {
-            const num_bytes = try readInt(u32, reader);
+            const num_bytes = try reader.takeInt(u32, .little);
             const elem_buf = try gpa.alloc(u8, num_bytes);
             _ = try reader.readSliceAll(elem_buf);
             buf[i] = elem_buf;
         } else if (T == f32) {
-            buf[i] = @bitCast(try readInt(u32, reader));
+            buf[i] = @bitCast(try reader.takeInt(u32, .little));
         } else if (T == f64) {
-            buf[i] = @bitCast(try readInt(u64, reader));
+            buf[i] = @bitCast(try reader.takeInt(u64, .little));
         } else {
-            buf[i] = try readInt(T, reader);
+            buf[i] = try reader.takeInt(T, .little);
         }
     }
     return buf;
@@ -40,10 +34,7 @@ pub fn decodeRleDictionary(comptime T: type, gpa: std.mem.Allocator, len: usize,
 }
 
 pub fn decodeLenghtPrependedRleBitPackedHybrid(comptime T: type, gpa: std.mem.Allocator, len: usize, bit_width: u8, reader: *Reader) ![]T {
-    var length_buf: [4]u8 = undefined;
-    try reader.readSliceAll(&length_buf);
-
-    const lenght = std.mem.readVarInt(u32, &length_buf, .little);
+    const lenght = try reader.takeVarInt(u32, .little, 4);
     if (lenght == 0) return error.EmptyBuffer;
 
     var limited_buf: [1024]u8 = undefined;
