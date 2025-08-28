@@ -110,24 +110,56 @@ test {
     _ = decoding;
 }
 
-// TODO: Fix these tests using real files.
-// test "missing PAR1 header" {
-//     const buf = "noheader" ** 2;
-//     const source = std.io.StreamSource{ .const_buffer = std.io.fixedBufferStream(buf) };
-//     try std.testing.expectError(error.MissingMagicHeader, read(std.testing.allocator, source));
-// }
+test "missing PAR1 header" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
 
-// test "missing PAR1 footer" {
-//     const buf = "PAR1nofooter" ** 2;
-//     const source = std.io.StreamSource{ .const_buffer = std.io.fixedBufferStream(buf) };
-//     try std.testing.expectError(error.MissingMagicFooter, read(std.testing.allocator, source));
-// }
+    const file = try tmp.dir.createFile("test", .{ .exclusive = true, .read = true });
+    defer file.close();
+    var writer_buf: [1024]u8 = undefined;
+    var file_writer = file.writer(&writer_buf);
+    try file_writer.interface.writeAll("noheader" ** 2);
+    try file_writer.interface.flush();
 
-// test "missing metadata length" {
-//     const buf = "PAR1aPAR1";
-//     const source = std.io.StreamSource{ .const_buffer = std.io.fixedBufferStream(buf) };
-//     try std.testing.expectError(error.IncorrectFile, read(std.testing.allocator, source));
-// }
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = file.reader(&reader_buf);
+
+    try std.testing.expectError(error.MissingMagicHeader, read(std.testing.allocator, &file_reader));
+}
+
+test "missing PAR1 footer" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const file = try tmp.dir.createFile("test", .{ .exclusive = true, .read = true });
+    defer file.close();
+    var writer_buf: [1024]u8 = undefined;
+    var file_writer = file.writer(&writer_buf);
+    try file_writer.interface.writeAll("PAR1nofooter" ** 2);
+    try file_writer.interface.flush();
+
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = file.reader(&reader_buf);
+
+    try std.testing.expectError(error.MissingMagicFooter, read(std.testing.allocator, &file_reader));
+}
+
+test "missing metadata length" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const file = try tmp.dir.createFile("test", .{ .exclusive = true, .read = true });
+    defer file.close();
+    var writer_buf: [1024]u8 = undefined;
+    var file_writer = file.writer(&writer_buf);
+    try file_writer.interface.writeAll("PAR1aPAR1");
+    try file_writer.interface.flush();
+
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = file.reader(&reader_buf);
+
+    try std.testing.expectError(error.IncorrectFile, read(std.testing.allocator, &file_reader));
+}
 
 test "reading metadata of a simple file" {
     var reader_buf: [1024]u8 = undefined;
