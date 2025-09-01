@@ -412,21 +412,21 @@ test "column chunk key-value metadata" {
     try testing.expectEqual(null, rg.rg.columns[1].meta_data.?.key_value_metadata);
 }
 
-// test "rle boolean encoding" {
-//     // Generated with this convoluted Python one-liner:
-//     // import polars as pl;import json;df = pl.read_parquet("./testdata/parquet-testing/data/rle_boolean_encoding.parquet");"[_]?bool{" + ", ".join([json.dumps(x[0]) for x in df.select('datatype_boolean').iter_rows()]) + "}"
-//     const expected = [_]?bool{ true, false, null, true, true, false, false, true, true, true, false, false, true, true, false, null, true, true, false, false, true, true, false, null, true, true, false, false, true, true, true, false, false, false, false, true, true, false, null, true, true, false, false, true, true, true, false, false, null, true, true, false, false, true, true, true, false, true, true, false, null, true, true, false, false, true, true, true };
+test "rle boolean encoding" {
+    // Generated with this convoluted Python one-liner:
+    // import polars as pl;import json;df = pl.read_parquet("./testdata/parquet-testing/data/rle_boolean_encoding.parquet");"[_]?bool{" + ", ".join([json.dumps(x[0]) for x in df.select('datatype_boolean').iter_rows()]) + "}"
+    const expected = [_]?bool{ true, false, null, true, true, false, false, true, true, true, false, false, true, true, false, null, true, true, false, false, true, true, false, null, true, true, false, false, true, true, true, false, false, false, false, true, true, false, null, true, true, false, false, true, true, true, false, false, null, true, true, false, false, true, true, true, false, true, true, false, null, true, true, false, false, true, true, true };
 
-//     var reader_buf: [1024]u8 = undefined;
-//     var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/rle_boolean_encoding.parquet", .{ .mode = .read_only })).reader(&reader_buf);
-//     var file = try File.read(testing.allocator, &file_reader);
-//     defer file.deinit();
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/rle_boolean_encoding.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
 
-//     try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(1, file.metadata.row_groups.len);
 
-//     var rg = file.rowGroup(0);
-//     try testing.expectEqualSlices(?bool, &expected, (try rg.readColumnDynamic(0)).boolean);
-// }
+    var rg = file.rowGroup(0);
+    try testing.expectEqualSlices(?bool, &expected, (try rg.readColumnDynamic(0)).boolean);
+}
 
 test "single nan" {
     var reader_buf: [1024]u8 = undefined;

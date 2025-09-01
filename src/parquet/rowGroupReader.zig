@@ -111,7 +111,10 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 const values = try file.readLevelDataV2(reader, rep_level, num_values, @intCast(data_page.repetition_levels_byte_length));
                 defer arena.free(values);
             } else if (data_page.repetition_levels_byte_length > 0) {
-                try file.file_reader.seekBy(@intCast(data_page.repetition_levels_byte_length));
+                const pos = file.file_reader.logicalPos();
+                const length: u64 = @intCast(data_page.repetition_levels_byte_length);
+                // FIXME: Use file.file_reader.seekBy(data_page.repetition_levels_byte_length) once `seekBy` is fixed on stdlib.
+                try file.file_reader.seekTo(pos + length);
             }
 
             var def_values: []u16 = undefined;
