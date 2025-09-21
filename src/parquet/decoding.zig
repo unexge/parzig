@@ -1,6 +1,6 @@
 const std = @import("std");
 const Reader = std.Io.Reader;
-const bitReader = @import("../bit_reader.zig").bitReader;
+const BitReader = @import("./BitReader.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
 
 pub fn decodePlain(comptime T: type, gpa: std.mem.Allocator, len: usize, reader: *Reader) ![]T {
@@ -51,17 +51,17 @@ pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reade
         const header = try std.leb.readUleb128(i64, reader.adaptToOldInterface());
         if (header & 1 == 1) {
             // bit packet run
-            var bit_reader = bitReader(.little, reader.adaptToOldInterface());
+            var bit_reader: BitReader = .init(reader, bit_width);
             const len = @min(buf.len - pos, @as(usize, @intCast((header >> 1) * 8)));
             for (0..len) |i| {
-                buf[pos + i] = try bit_reader.readBitsNoEof(T, bit_width);
+                buf[pos + i] = try bit_reader.take(T);
             }
             pos += len;
         } else {
             // rle run
-            var bit_reader = bitReader(.little, reader.adaptToOldInterface());
+            var bit_reader: BitReader = .init(reader, bit_width);
             const len = @min(buf.len - pos, @as(usize, @intCast(header >> 1)));
-            const val = try bit_reader.readBitsNoEof(T, bit_width);
+            const val = try bit_reader.take(T);
             for (0..len) |i| {
                 buf[pos + i] = val;
             }
@@ -72,9 +72,9 @@ pub fn decodeRleBitPackedHybrid(comptime T: type, buf: []T, bit_width: u8, reade
 
 pub fn decodeBitPacked(comptime T: type, gpa: std.mem.Allocator, len: usize, bit_width: u8, reader: *Reader) ![]T {
     const values = try gpa.alloc(T, len);
-    var bit_reader = bitReader(.little, reader.adaptToOldInterface());
+    var bit_reader: BitReader = .init(reader, bit_width);
     for (0..len) |i| {
-        values[i] = try bit_reader.readBitsNoEof(T, bit_width);
+        values[i] = try bit_reader.take(T);
     }
     return values;
 }
@@ -122,15 +122,15 @@ pub fn decodeDeltaBinaryPacked(comptime T: type, gpa: std.mem.Allocator, len: us
         const min_delta = try protocol_compact.readZigZagInt(T, reader);
         try reader.readSliceAll(bit_widths);
 
-        var bit_reader = bitReader(.little, reader.adaptToOldInterface());
-
         for (bit_widths) |bit_width| {
             if (read == value_count) {
                 break;
             }
 
+            var bit_reader: BitReader = .init(reader, bit_width);
+
             for (0..miniblock_value_count) |_| {
-                const delta: T = @truncate(try bit_reader.readBitsNoEof(i256, bit_width));
+                const delta: T = @truncate(try bit_reader.take(i256));
                 if (read == value_count) {
                     continue;
                 }
