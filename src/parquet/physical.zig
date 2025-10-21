@@ -11,6 +11,14 @@
 // See https://parquet.apache.org/docs/file-format/data-pages/encodings/
 
 pub fn plain(comptime T: type, arena: Allocator, reader: *Reader, buf: []T) !void {
+    if (T == bool) {
+        var bit_reader: BitReader = .init(reader, 1);
+        for (buf) |*item| {
+            item.* = try bit_reader.take(bool);
+        }
+        return;
+    }
+
     for (buf) |*item| {
         switch (T) {
             i32, i64, i96 => {
@@ -22,7 +30,7 @@ pub fn plain(comptime T: type, arena: Allocator, reader: *Reader, buf: []T) !voi
             f64 => {
                 item.* = @bitCast(try reader.takeInt(u64, .little));
             },
-            []u8 => {
+            []u8, []const u8 => {
                 const num_bytes = try reader.takeInt(u32, .little);
                 const byte_buf = try arena.alloc(u8, num_bytes);
                 try reader.readSliceAll(byte_buf);
@@ -62,7 +70,7 @@ pub fn runLengthBitPackingHybridLengthPrepended(comptime T: type, reader: *Reade
 pub fn runLengthBitPackingHybrid(comptime T: type, reader: *Reader, bit_width: u8, buf: []T) !void {
     var pos: usize = 0;
     while (buf.len > pos) {
-        const header = try reader.takeLeb128(i64);
+        const header = try reader.takeLeb128(u64);
         if (header & 1 == 1) {
             // bit-packet run
             var bit_reader: BitReader = .init(reader, bit_width);

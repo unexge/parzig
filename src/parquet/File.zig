@@ -5,7 +5,6 @@ const fs = std.fs;
 
 const parquet_schema = @import("../generated/parquet.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
-const decoding = @import("./decoding.zig");
 const dynamic = @import("./dynamic.zig");
 const physical = @import("./physical.zig");
 const rowGroupReader = @import("./rowGroupReader.zig");
@@ -95,7 +94,9 @@ pub fn repAndDefLevelOfColumn(self: *File, path: [][]const u8) !std.meta.Tuple(&
 }
 
 pub fn readLevelDataV1(self: *File, reader: *Reader, bit_width: u8, num_values: usize) ![]u16 {
-    return decoding.decodeLenghtPrependedRleBitPackedHybrid(u16, self.arena.allocator(), num_values, bit_width, reader);
+    const values = try self.arena.allocator().alloc(u16, num_values);
+    try physical.runLengthBitPackingHybridLengthPrepended(u16, reader, bit_width, values);
+    return values;
 }
 
 pub fn readLevelDataV2(self: *File, reader: *Reader, bit_width: u8, num_values: usize, length: u32) ![]u16 {
@@ -103,12 +104,11 @@ pub fn readLevelDataV2(self: *File, reader: *Reader, bit_width: u8, num_values: 
     var limited_reader = reader.limited(.limited(length), &reader_buf);
 
     const values = try self.arena.allocator().alloc(u16, num_values);
-    try decoding.decodeRleBitPackedHybrid(u16, values, bit_width, &limited_reader.interface);
+    try physical.runLengthBitPackingHybrid(u16, &limited_reader.interface, bit_width, values);
     return values;
 }
 
 test {
-    _ = decoding;
     _ = physical;
 }
 

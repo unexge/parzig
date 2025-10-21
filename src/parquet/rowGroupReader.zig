@@ -4,7 +4,6 @@ const Reader = std.io.Reader;
 const parquet_schema = @import("../generated/parquet.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
 const compress = @import("../compress.zig");
-const decoding = @import("./decoding.zig");
 const physical = @import("./physical.zig");
 const File = @import("./File.zig");
 
@@ -74,16 +73,23 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
             }
 
             const encoded_values = switch (data_page.encoding) {
-                .PLAIN => try decoding.decodePlain(Inner, arena, num_encoded_values, decoder),
+                .PLAIN => blk: {
+                    const buf = try arena.alloc(Inner, num_encoded_values);
+                    try physical.plain(Inner, arena, decoder, buf);
+                    break :blk buf;
+                },
                 .PLAIN_DICTIONARY, .RLE_DICTIONARY => blk: {
-                    const indices = try decoding.decodeRleDictionary(u32, arena, num_encoded_values, decoder);
+                    const bit_width = try decoder.takeByte();
+                    const indices = try arena.alloc(u32, num_encoded_values);
+                    try physical.runLengthBitPackingHybrid(u32, decoder, bit_width, indices);
 
                     try file.file_reader.seekTo(@intCast(metadata.dictionary_page_offset.?));
                     const dict_page_header = try page_header_reader.read(arena, &file.file_reader.interface);
                     const header = dict_page_header.dictionary_page_header.?;
 
                     const dict_decoder = try decoderForPage(arena, &file.file_reader.interface, metadata.codec);
-                    const dict_values = try decoding.decodePlain(Inner, arena, @intCast(header.num_values), dict_decoder);
+                    const dict_values = try arena.alloc(Inner, @intCast(header.num_values));
+                    try physical.plain(Inner, arena, dict_decoder, dict_values);
 
                     const values = try arena.alloc(Inner, indices.len);
                     for (indices, 0..) |idx, i| {
