@@ -56,8 +56,9 @@ pub fn plain(comptime T: type, arena: Allocator, reader: *Reader, buf: []T) !voi
     }
 }
 
-pub fn dictionary() !void {
-    return error.NotImplemented;
+pub fn dictionary(comptime T: type, reader: *Reader, buf: []T) !void {
+    const bit_width = try reader.takeByte();
+    return runLengthBitPackingHybrid(T, reader, bit_width, buf);
 }
 
 pub fn runLengthBitPackingHybridLengthPrepended(comptime T: type, reader: *Reader, bit_width: u8, buf: []T) !void {

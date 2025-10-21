@@ -79,9 +79,8 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                     break :blk buf;
                 },
                 .PLAIN_DICTIONARY, .RLE_DICTIONARY => blk: {
-                    const bit_width = try decoder.takeByte();
                     const indices = try arena.alloc(u32, num_encoded_values);
-                    try physical.runLengthBitPackingHybrid(u32, decoder, bit_width, indices);
+                    try physical.dictionary(u32, decoder, indices);
 
                     try file.file_reader.seekTo(@intCast(metadata.dictionary_page_offset.?));
                     const dict_page_header = try page_header_reader.read(arena, &file.file_reader.interface);
