@@ -1,4 +1,5 @@
 const std = @import("std");
+const Io = std.Io;
 const Reader = std.Io.Reader;
 const mem = std.mem;
 const fs = std.fs;
@@ -16,6 +17,7 @@ const METADATA_LENGTH_SIZE = 4;
 const FOOTER_SIZE = MAGIC.len + METADATA_LENGTH_SIZE;
 const MIN_SIZE = MAGIC.len + FOOTER_SIZE;
 
+io: Io,
 arena: std.heap.ArenaAllocator,
 file_reader: *fs.File.Reader,
 metadata: parquet_schema.FileMetaData,
@@ -34,6 +36,8 @@ pub const RowGroup = struct {
 };
 
 pub fn read(allocator: mem.Allocator, file_reader: *fs.File.Reader) !File {
+    const io = file_reader.io;
+
     const size = try file_reader.getSize();
     if (size < MIN_SIZE) {
         return error.IncorrectFile;
@@ -62,7 +66,7 @@ pub fn read(allocator: mem.Allocator, file_reader: *fs.File.Reader) !File {
     var metadata_buf_reader: Reader = .fixed(metadata_buf);
     const metadata = try metadata_reader.read(arena.allocator(), &metadata_buf_reader);
 
-    return File{ .arena = arena, .file_reader = file_reader, .metadata = metadata };
+    return File{ .arena = arena, .io = io, .file_reader = file_reader, .metadata = metadata };
 }
 
 pub fn rowGroup(self: *File, index: usize) RowGroup {
@@ -70,7 +74,7 @@ pub fn rowGroup(self: *File, index: usize) RowGroup {
 }
 
 pub fn deinit(self: *File) void {
-    self.file_reader.file.close();
+    self.file_reader.file.close(self.io);
     self.arena.deinit();
 }
 
@@ -124,7 +128,7 @@ test "missing PAR1 header" {
     try file_writer.interface.flush();
 
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = file.reader(&reader_buf);
+    var file_reader = file.reader(std.testing.io, &reader_buf);
 
     try std.testing.expectError(error.MissingMagicHeader, read(std.testing.allocator, &file_reader));
 }
@@ -141,7 +145,7 @@ test "missing PAR1 footer" {
     try file_writer.interface.flush();
 
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = file.reader(&reader_buf);
+    var file_reader = file.reader(std.testing.io, &reader_buf);
 
     try std.testing.expectError(error.MissingMagicFooter, read(std.testing.allocator, &file_reader));
 }
@@ -158,14 +162,14 @@ test "missing metadata length" {
     try file_writer.interface.flush();
 
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = file.reader(&reader_buf);
+    var file_reader = file.reader(std.testing.io, &reader_buf);
 
     try std.testing.expectError(error.IncorrectFile, read(std.testing.allocator, &file_reader));
 }
 
 test "reading metadata of a simple file" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/simple.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/simple.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
     var file = try File.read(std.testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -189,7 +193,7 @@ test "reading metadata of a simple file" {
 
 test "reading a row group of a simple file" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/simple.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/simple.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
     var file = try File.read(std.testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -201,7 +205,7 @@ test "reading a row group of a simple file" {
 
 test "reading a row group of a simple file with dynamic types" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/simple.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/simple.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
     var file = try File.read(std.testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -213,7 +217,7 @@ test "reading a row group of a simple file with dynamic types" {
 
 test "reading gzipped file" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/gzipped.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/gzipped.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
     var file = try File.read(std.testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -227,7 +231,7 @@ test "reading gzipped file" {
 
 test "reading simple file with nulls" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/simple_with_nulls.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/simple_with_nulls.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
     var file = try File.read(std.testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -241,7 +245,7 @@ test "reading simple file with nulls" {
 
 test "reading simple file with nulls with dynamic types" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/simple_with_nulls.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/simple_with_nulls.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
     var file = try File.read(std.testing.allocator, &file_reader);
     defer file.deinit();
 

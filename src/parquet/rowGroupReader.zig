@@ -1,5 +1,5 @@
 const std = @import("std");
-const Reader = std.io.Reader;
+const Reader = std.Io.Reader;
 
 const parquet_schema = @import("../generated/parquet.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;

@@ -3,10 +3,12 @@ const parzig = @import("parzig");
 
 const File = parzig.parquet.File;
 const testing = std.testing;
+const io = testing.io;
+const Io = std.Io;
 
 test "all types dictionary" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/alltypes_dictionary.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/alltypes_dictionary.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -29,7 +31,7 @@ test "all types dictionary" {
 
 test "all types plain" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/alltypes_plain.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/alltypes_plain.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -52,7 +54,7 @@ test "all types plain" {
 
 test "all types plain snappy compressed" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/alltypes_plain.snappy.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/alltypes_plain.snappy.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -75,7 +77,7 @@ test "all types plain snappy compressed" {
 
 test "binary data" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/binary.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/binary.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -102,7 +104,7 @@ test "binary data" {
 
 test "byte array decimal" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/byte_array_decimal.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/byte_array_decimal.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -155,7 +157,7 @@ test "delta byte array" {
     };
 
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/delta_byte_array.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/delta_byte_array.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -196,7 +198,7 @@ test "delta encoding optional column" {
     };
 
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/delta_encoding_optional_column.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/delta_encoding_optional_column.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -242,7 +244,7 @@ test "delta encoding required column" {
     };
 
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/delta_encoding_required_column.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/delta_encoding_required_column.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -263,7 +265,7 @@ test "delta length byte array" {
     @setEvalBranchQuota(1_000_000);
 
     var reader_buf: [10024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/delta_length_byte_array.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/delta_length_byte_array.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -354,7 +356,7 @@ test "delta binary packed" {
     };
 
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/delta_binary_packed.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/delta_binary_packed.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -374,7 +376,7 @@ test "delta binary packed" {
 
 test "byte stream split zstd compressed" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/byte_stream_split.zstd.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/byte_stream_split.zstd.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -394,7 +396,7 @@ test "byte stream split zstd compressed" {
 
 test "column chunk key-value metadata" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/column_chunk_key_value_metadata.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/column_chunk_key_value_metadata.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -418,7 +420,7 @@ test "rle boolean encoding" {
     const expected = [_]?bool{ true, false, null, true, true, false, false, true, true, true, false, false, true, true, false, null, true, true, false, false, true, true, false, null, true, true, false, false, true, true, true, false, false, false, false, true, true, false, null, true, true, false, false, true, true, true, false, false, null, true, true, false, false, true, true, true, false, true, true, false, null, true, true, false, false, true, true, true };
 
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/rle_boolean_encoding.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/rle_boolean_encoding.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 
@@ -430,7 +432,7 @@ test "rle boolean encoding" {
 
 test "single nan" {
     var reader_buf: [1024]u8 = undefined;
-    var file_reader = (try std.fs.cwd().openFile("testdata/parquet-testing/data/single_nan.parquet", .{ .mode = .read_only })).reader(&reader_buf);
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/single_nan.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
     defer file.deinit();
 

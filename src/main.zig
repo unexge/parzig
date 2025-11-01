@@ -1,6 +1,8 @@
 const std = @import("std");
 const parzig = @import("parzig");
 
+const Io = std.Io;
+
 pub fn main() !void {
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer {
@@ -11,12 +13,15 @@ pub fn main() !void {
     var args = std.process.args();
     _ = args.next() orelse unreachable; // program name
     const path = args.next() orelse return error.MissingArgument;
-
     std.debug.print("Parsing {s}\n", .{path});
 
-    const file = try std.fs.cwd().openFile(path, .{});
+    var threaded: Io.Threaded = .init(allocator);
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    const file = try Io.Dir.cwd().openFile(io, path, .{});
     var read_buffer: [10240]u8 = undefined;
-    var file_reader = file.reader(&read_buffer);
+    var file_reader = file.reader(io, &read_buffer);
     var parquet_file = try parzig.parquet.File.read(allocator, &file_reader);
     defer parquet_file.deinit();
 

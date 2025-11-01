@@ -1,7 +1,8 @@
 const std = @import("std");
-const Reader = std.Io.Reader;
-const Limit = std.Io.Limit;
-const Writer = std.Io.Writer;
+const Io = std.Io;
+const Reader = Io.Reader;
+const Limit = Io.Limit;
+const Writer = Io.Writer;
 
 pub const Decompress = struct {
     pub const window_len = 65536;
@@ -259,15 +260,15 @@ test "copy 4-byte" {
 }
 
 test "golden" {
-    const compressed_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt.rawsnappy", .{ .mode = .read_only });
+    const compressed_file = try Io.Dir.cwd().openFile(testing.io, "testdata/compress/snappy/Isaac.Newton-Opticks.txt.rawsnappy", .{ .mode = .read_only });
     var compressed_buf: [1024]u8 = undefined;
-    var compressed_reader = compressed_file.reader(&compressed_buf);
+    var compressed_reader = compressed_file.reader(testing.io, &compressed_buf);
     const compressed = try compressed_reader.interface.allocRemaining(testing.allocator, .unlimited);
     defer testing.allocator.free(compressed);
 
-    const source_file = try std.fs.cwd().openFile("testdata/compress/snappy/Isaac.Newton-Opticks.txt", .{ .mode = .read_only });
+    const source_file = try Io.Dir.cwd().openFile(testing.io, "testdata/compress/snappy/Isaac.Newton-Opticks.txt", .{ .mode = .read_only });
     var source_buf: [1024]u8 = undefined;
-    var source_reader = source_file.reader(&source_buf);
+    var source_reader = source_file.reader(testing.io, &source_buf);
     const source = try source_reader.interface.allocRemaining(testing.allocator, .unlimited);
     defer testing.allocator.free(source);
 
