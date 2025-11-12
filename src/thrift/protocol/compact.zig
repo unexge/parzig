@@ -179,10 +179,9 @@ pub fn StructReader(comptime T: type) type {
     };
 
     const field_types = blk: {
-        var field_types: [max_field_id]type = undefined;
+        var field_types: [max_field_id]type = @splat(void);
         @setEvalBranchQuota(3000);
         inline for (fields, 0..) |field, i| {
-            field_types[i] = void;
             _ = comptime std.meta.intToEnum(std.meta.FieldEnum(T), i) catch continue;
             const field_id = comptime T.fieldId(@enumFromInt(i));
             field_types[field_id - 1] = unwrapOptional(field.type);

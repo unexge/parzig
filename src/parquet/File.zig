@@ -60,6 +60,7 @@ pub fn read(allocator: mem.Allocator, file_reader: *fs.File.Reader) !File {
     try file_reader.seekTo(size - metadata_length - FOOTER_SIZE);
 
     var arena = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
     const metadata_buf = try file_reader.interface.readAlloc(arena.allocator(), metadata_length);
 
     const metadata_reader = protocol_compact.StructReader(parquet_schema.FileMetaData);

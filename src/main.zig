@@ -72,7 +72,7 @@ pub fn main() !void {
 }
 
 fn printValues(comptime T: type, data: []?T) void {
-    if (T == []const u8) {
+    if (T == []const u8 or T == []u8) {
         if (data.len > 10) {
             for (data[0..10], 0..) |item, i| {
                 if (i == 9) {
