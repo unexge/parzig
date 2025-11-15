@@ -86,7 +86,10 @@ test "all types tiny pages" {
 
     var rg = file.rowGroup(0);
 
-    try testing.expectEqualSlices(i32, &[_]i32{ 122, 123, 124, 125, 126, 127, 128, 129, 130, 131 }, (try rg.readColumn(i32, 0))[0..10]);
+    const first_column = try rg.readColumn(i32, 0);
+    try testing.expectEqual(7300, first_column.len);
+
+    try testing.expectEqualSlices(i32, &[_]i32{ 122, 123, 124, 125, 126, 127, 128, 129, 130, 131 }, first_column[0..10]);
     try testing.expectEqualSlices(bool, &[_]bool{ true, false, true, false, true, false, true, false, true, false }, (try rg.readColumn(bool, 1))[0..10]);
     try testing.expectEqualSlices(i32, &[_]i32{ 2, 3, 4, 5, 6, 7, 8, 9, 0, 1 }, (try rg.readColumn(i32, 2))[0..10]);
     try testing.expectEqualSlices(i32, &[_]i32{ 2, 3, 4, 5, 6, 7, 8, 9, 0, 1 }, (try rg.readColumn(i32, 3))[0..10]);

@@ -39,190 +39,202 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
     const rep_level = levels[0];
     const def_level = levels[1];
 
-    try file.file_reader.seekTo(@intCast(metadata.data_page_offset));
-
     const page_header_reader = protocol_compact.StructReader(parquet_schema.PageHeader);
-    var page_header = try page_header_reader.read(arena, &file.file_reader.interface);
 
     // Store values in the dictionary page, these values will be referenced in data pages
     var dict_values: ?[]Inner = null;
-    if (page_header.type == .DICTIONARY_PAGE) {
-        dict_values = try readDictionaryPage(Inner, arena, page_header, file, metadata.codec);
-
-        // Read the next page header to get data pages if we started with a dictionary page
-        page_header = try page_header_reader.read(arena, &file.file_reader.interface);
+    if (metadata.dictionary_page_offset) |offset| {
+        try file.file_reader.seekTo(@intCast(offset));
+        const dictionary_page_header = try page_header_reader.read(arena, &file.file_reader.interface);
+        dict_values = try readDictionaryPage(Inner, arena, dictionary_page_header, &file.file_reader.interface, metadata.codec);
     }
 
-    switch (page_header.type) {
-        .DATA_PAGE => {
-            const data_page = page_header.data_page_header.?;
-            const num_values: usize = @intCast(data_page.num_values);
-            var num_encoded_values = num_values;
+    var read_values = try arena.alloc(T, @intCast(metadata.num_values));
+    var read_values_pos: usize = 0;
 
-            const decoder = try decoderForPage(arena, &file.file_reader.interface, metadata.codec);
+    try file.file_reader.seekTo(@intCast(metadata.data_page_offset));
 
-            if (rep_level > 0) {
-                const values = try file.readLevelDataV1(decoder, rep_level, num_values);
-                defer arena.free(values);
-            }
-
-            var def_values: []u16 = undefined;
-            if (def_level > 0) {
-                def_values = try file.readLevelDataV1(decoder, def_level, num_values);
-
-                num_encoded_values = blk: {
-                    var i: usize = 0;
-                    for (def_values) |v| {
-                        i += v;
-                    }
-                    break :blk i;
-                };
-            }
-            defer {
-                if (def_level > 0) arena.free(def_values);
-            }
-
-            const encoded_values = switch (data_page.encoding) {
-                .PLAIN => blk: {
-                    const buf = try arena.alloc(Inner, num_encoded_values);
-                    try physical.plain(Inner, arena, decoder, buf);
-                    break :blk buf;
-                },
-                .PLAIN_DICTIONARY, .RLE_DICTIONARY => blk: {
-                    const indices = try arena.alloc(u32, num_encoded_values);
-                    try physical.dictionary(u32, decoder, indices);
-
-                    // We haven't read the dictionary page yet, read it now
-                    if (dict_values == null) {
-                        try file.file_reader.seekTo(@intCast(metadata.dictionary_page_offset.?));
-                        const dicttionary_page_header = try page_header_reader.read(arena, &file.file_reader.interface);
-                        dict_values = try readDictionaryPage(Inner, arena, dicttionary_page_header, file, metadata.codec);
-                    }
-
-                    const values = try arena.alloc(Inner, indices.len);
-                    for (indices, 0..) |idx, i| {
-                        values[i] = dict_values.?[idx];
-                    }
-                    break :blk values;
-                },
-                .BYTE_STREAM_SPLIT => blk: {
-                    const buf = try arena.alloc(Inner, num_encoded_values);
-                    try physical.byteStreamSplit(Inner, arena, decoder, buf);
-                    break :blk buf;
-                },
-                else => {
-                    std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
-                    return error.UnsupportedEncoding;
-                },
+    while (metadata.num_values > read_values_pos) {
+        const page_header = try page_header_reader.read(arena, &file.file_reader.interface);
+        const page_end = file.file_reader.logicalPos() + @as(u64, @intCast(page_header.compressed_page_size));
+        defer {
+            file.file_reader.seekTo(page_end) catch |err| {
+                std.debug.print("Failed to seek to end of the page: {any}\n", .{err});
             };
+        }
 
-            return decodeValues(T, arena, num_encoded_values, encoded_values, num_values, def_values);
-        },
-        .DATA_PAGE_V2 => {
-            const data_page = page_header.data_page_header_v2.?;
-            const num_values: usize = @intCast(data_page.num_values);
-            const num_nulls: usize = @intCast(data_page.num_nulls);
-            const num_encoded_values = num_values - num_nulls;
+        switch (page_header.type) {
+            .DICTIONARY_PAGE => {
+                if (dict_values != null) {
+                    return error.DuplicateDictionaryPages;
+                }
 
-            const reader = &file.file_reader.interface;
+                dict_values = try readDictionaryPage(Inner, arena, page_header, &file.file_reader.interface, metadata.codec);
+            },
+            .DATA_PAGE => {
+                const data_page = page_header.data_page_header.?;
+                const num_values: usize = @intCast(data_page.num_values);
+                var num_encoded_values = num_values;
 
-            if (rep_level > 0) {
-                const values = try file.readLevelDataV2(reader, rep_level, num_values, @intCast(data_page.repetition_levels_byte_length));
-                defer arena.free(values);
-            } else if (data_page.repetition_levels_byte_length > 0) {
-                const pos = file.file_reader.logicalPos();
-                const length: u64 = @intCast(data_page.repetition_levels_byte_length);
-                // FIXME: Use file.file_reader.seekBy(data_page.repetition_levels_byte_length) once `seekBy` is fixed on stdlib.
-                try file.file_reader.seekTo(pos + length);
-            }
+                const decoder = try decoderForPage(arena, &file.file_reader.interface, metadata.codec);
 
-            var def_values: []u16 = undefined;
-            const has_def_values = def_level > 0 and data_page.definition_levels_byte_length > 0;
-            if (has_def_values) {
-                def_values = try file.readLevelDataV2(reader, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
+                if (rep_level > 0) {
+                    const values = try file.readLevelDataV1(decoder, rep_level, num_values);
+                    defer arena.free(values);
+                }
 
-                std.debug.assert(num_encoded_values == blk: {
-                    var i: usize = 0;
-                    for (def_values) |v| {
-                        i += v;
-                    }
-                    break :blk i;
-                });
-            }
-            defer {
-                if (has_def_values) arena.free(def_values);
-            }
+                var def_values: []u16 = undefined;
+                if (def_level > 0) {
+                    def_values = try file.readLevelDataV1(decoder, def_level, num_values);
 
-            const decoder = try decoderForPage(arena, reader, metadata.codec);
+                    num_encoded_values = blk: {
+                        var i: usize = 0;
+                        for (def_values) |v| {
+                            i += v;
+                        }
+                        break :blk i;
+                    };
+                }
+                defer {
+                    if (def_level > 0) arena.free(def_values);
+                }
 
-            const buf = try arena.alloc(Inner, num_encoded_values);
-            switch (data_page.encoding) {
-                .RLE => {
-                    if (Inner != bool) {
-                        return error.UnsupportedType;
-                    }
+                const encoded_values = switch (data_page.encoding) {
+                    .PLAIN => blk: {
+                        const buf = try arena.alloc(Inner, num_encoded_values);
+                        try physical.plain(Inner, arena, decoder, buf);
+                        break :blk buf;
+                    },
+                    .PLAIN_DICTIONARY, .RLE_DICTIONARY => blk: {
+                        if (dict_values == null) return error.MissingDictionaryPage;
 
-                    try physical.runLengthBitPackingHybridLengthPrepended(Inner, decoder, 1, buf);
-                },
-                .DELTA_BINARY_PACKED => {
-                    const num_read = try physical.delta(Inner, arena, decoder, buf);
-                    std.debug.assert(num_read == num_encoded_values);
-                },
-                .DELTA_LENGTH_BYTE_ARRAY => {
-                    try physical.deltaLengthByteArray(Inner, arena, decoder, buf);
-                },
-                .DELTA_BYTE_ARRAY => {
-                    try physical.deltaStrings(Inner, arena, decoder, buf);
-                },
-                else => {
-                    std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
-                    return error.UnsupportedEncoding;
-                },
-            }
+                        const indices = try arena.alloc(u32, num_encoded_values);
+                        try physical.dictionary(u32, decoder, indices);
 
-            return decodeValues(T, arena, num_encoded_values, buf, num_values, def_values);
-        },
-        else => {
-            std.debug.print("{any} is not supported\n", .{page_header.type});
-            return error.PageTypeNotSupported;
-        },
+                        const values = try arena.alloc(Inner, indices.len);
+                        for (indices, 0..) |idx, i| {
+                            values[i] = dict_values.?[idx];
+                        }
+                        break :blk values;
+                    },
+                    .BYTE_STREAM_SPLIT => blk: {
+                        const buf = try arena.alloc(Inner, num_encoded_values);
+                        try physical.byteStreamSplit(Inner, arena, decoder, buf);
+                        break :blk buf;
+                    },
+                    else => {
+                        std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
+                        return error.UnsupportedEncoding;
+                    },
+                };
+
+                try decodeValues(T, read_values[read_values_pos..], num_encoded_values, encoded_values, num_values, def_values);
+                read_values_pos += num_values;
+            },
+            .DATA_PAGE_V2 => {
+                const data_page = page_header.data_page_header_v2.?;
+                const num_values: usize = @intCast(data_page.num_values);
+                const num_nulls: usize = @intCast(data_page.num_nulls);
+                const num_encoded_values = num_values - num_nulls;
+
+                const reader = &file.file_reader.interface;
+
+                if (rep_level > 0) {
+                    const values = try file.readLevelDataV2(reader, rep_level, num_values, @intCast(data_page.repetition_levels_byte_length));
+                    defer arena.free(values);
+                } else if (data_page.repetition_levels_byte_length > 0) {
+                    const pos = file.file_reader.logicalPos();
+                    const length: u64 = @intCast(data_page.repetition_levels_byte_length);
+                    // FIXME: Use file.file_reader.seekBy(data_page.repetition_levels_byte_length) once `seekBy` is fixed on stdlib.
+                    try file.file_reader.seekTo(pos + length);
+                }
+
+                var def_values: []u16 = undefined;
+                const has_def_values = def_level > 0 and data_page.definition_levels_byte_length > 0;
+                if (has_def_values) {
+                    def_values = try file.readLevelDataV2(reader, def_level, num_values, @intCast(data_page.definition_levels_byte_length));
+
+                    std.debug.assert(num_encoded_values == blk: {
+                        var i: usize = 0;
+                        for (def_values) |v| {
+                            i += v;
+                        }
+                        break :blk i;
+                    });
+                }
+                defer {
+                    if (has_def_values) arena.free(def_values);
+                }
+
+                const decoder = try decoderForPage(arena, reader, metadata.codec);
+
+                const buf = try arena.alloc(Inner, num_encoded_values);
+                switch (data_page.encoding) {
+                    .RLE => {
+                        if (Inner != bool) {
+                            return error.UnsupportedType;
+                        }
+
+                        try physical.runLengthBitPackingHybridLengthPrepended(Inner, decoder, 1, buf);
+                    },
+                    .DELTA_BINARY_PACKED => {
+                        const num_read = try physical.delta(Inner, arena, decoder, buf);
+                        std.debug.assert(num_read == num_encoded_values);
+                    },
+                    .DELTA_LENGTH_BYTE_ARRAY => {
+                        try physical.deltaLengthByteArray(Inner, arena, decoder, buf);
+                    },
+                    .DELTA_BYTE_ARRAY => {
+                        try physical.deltaStrings(Inner, arena, decoder, buf);
+                    },
+                    else => {
+                        std.debug.print("Unsupported encoding: {any}\n", .{data_page.encoding});
+                        return error.UnsupportedEncoding;
+                    },
+                }
+
+                try decodeValues(T, read_values[read_values_pos..], num_encoded_values, buf, num_values, def_values);
+                read_values_pos += num_values;
+            },
+            else => {
+                std.debug.print("{any} is not supported\n", .{page_header.type});
+                return error.PageTypeNotSupported;
+            },
+        }
     }
+
+    return read_values;
 }
 
 inline fn decodeValues(
     comptime T: type,
-    arena: std.mem.Allocator,
+    dest: []T,
     num_encoded_values: usize,
     encoded_values: []unwrapOptional(T),
     num_values: usize,
     def_values: []u16,
-) ![]T {
+) !void {
     if (num_values == num_encoded_values) {
         // No nulls
-        // TODO: Can we just cast `num_values` to `[]T`?
-        const values = try arena.alloc(T, num_values);
         for (encoded_values, 0..) |v, i| {
-            values[i] = v;
+            dest[i] = v;
         }
-        return values;
+        return;
     }
 
     if (@typeInfo(T) != .optional) {
         return error.NullValuesWithoutOptionalType;
     }
 
-    const values = try arena.alloc(T, num_values);
     var last_decoded_value: usize = 0;
     for (def_values, 0..) |v, i| {
         if (v == 0) {
-            values[i] = null;
+            dest[i] = null;
         } else {
-            values[i] = encoded_values[last_decoded_value];
+            dest[i] = encoded_values[last_decoded_value];
             last_decoded_value += 1;
         }
     }
-
-    return values;
 }
 
 fn decoderForPage(arena: std.mem.Allocator, inner_reader: *Reader, codec: parquet_schema.CompressionCodec) !*Reader {
@@ -255,14 +267,14 @@ fn decoderForPage(arena: std.mem.Allocator, inner_reader: *Reader, codec: parque
     };
 }
 
-fn readDictionaryPage(comptime T: type, arena: std.mem.Allocator, page_header: parquet_schema.PageHeader, file: *File, codec: parquet_schema.CompressionCodec) ![]T {
+fn readDictionaryPage(comptime T: type, arena: std.mem.Allocator, page_header: parquet_schema.PageHeader, reader: *Reader, codec: parquet_schema.CompressionCodec) ![]T {
     const header = page_header.dictionary_page_header orelse return error.MissingDictionaryPageHeader;
     if (header.encoding != .PLAIN and header.encoding != .PLAIN_DICTIONARY) {
         std.debug.print("Unsupported encoding in dictionary page: {any}\n", .{header.encoding});
         return error.UnexpectedEncodingInDictionaryPage;
     }
 
-    const dict_decoder = try decoderForPage(arena, &file.file_reader.interface, codec);
+    const dict_decoder = try decoderForPage(arena, reader, codec);
     const dict_values = try arena.alloc(T, @intCast(header.num_values));
     try physical.plain(T, arena, dict_decoder, dict_values);
     return dict_values;
