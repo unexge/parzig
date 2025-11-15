@@ -9,7 +9,7 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `alltypes_dictionary.parquet`                    | ✅     |
 | `alltypes_plain.parquet`                         | ✅     |
 | `alltypes_plain.snappy.parquet`                  | ✅     |
-| `alltypes_tiny_pages.parquet`                    | 🚧     |
+| `alltypes_tiny_pages.parquet`                    | ✅     |
 | `alltypes_tiny_pages_plain.parquet`              | ✅     |
 | `binary.parquet`                                 | ✅     |
 | `byte_array_decimal.parquet`                     | ✅     |

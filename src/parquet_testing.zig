@@ -75,6 +75,27 @@ test "all types plain snappy compressed" {
     try testing.expectEqualDeep(&[_][]const u8{ "0", "1" }, try rg.readColumn([]const u8, 9));
 }
 
+test "all types tiny pages" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/alltypes_tiny_pages.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(7300, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    try testing.expectEqualSlices(i32, &[_]i32{ 122, 123, 124, 125, 126, 127, 128, 129, 130, 131 }, (try rg.readColumn(i32, 0))[0..10]);
+    try testing.expectEqualSlices(bool, &[_]bool{ true, false, true, false, true, false, true, false, true, false }, (try rg.readColumn(bool, 1))[0..10]);
+    try testing.expectEqualSlices(i32, &[_]i32{ 2, 3, 4, 5, 6, 7, 8, 9, 0, 1 }, (try rg.readColumn(i32, 2))[0..10]);
+    try testing.expectEqualSlices(i32, &[_]i32{ 2, 3, 4, 5, 6, 7, 8, 9, 0, 1 }, (try rg.readColumn(i32, 3))[0..10]);
+    try testing.expectEqualSlices(i32, &[_]i32{ 2, 3, 4, 5, 6, 7, 8, 9, 0, 1 }, (try rg.readColumn(i32, 4))[0..10]);
+    try testing.expectEqualSlices(i64, &[_]i64{ 20, 30, 40, 50, 60, 70, 80, 90, 0, 10 }, (try rg.readColumn(i64, 5))[0..10]);
+    try testing.expectEqualSlices(f32, &[_]f32{ 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 0.0, 1.1 }, (try rg.readColumn(f32, 6))[0..10]);
+    try testing.expectEqualSlices(f64, &[_]f64{ 20.2, 30.299999999999997, 40.4, 50.5, 60.599999999999994, 70.7, 80.8, 90.89999999999999, 0.0, 10.1 }, (try rg.readColumn(f64, 7))[0..10]);
+}
+
 test "all types tiny pages plain" {
     var reader_buf: [1024]u8 = undefined;
     var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/alltypes_tiny_pages_plain.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);

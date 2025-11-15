@@ -42,7 +42,17 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
     try file.file_reader.seekTo(@intCast(metadata.data_page_offset));
 
     const page_header_reader = protocol_compact.StructReader(parquet_schema.PageHeader);
-    const page_header = try page_header_reader.read(arena, &file.file_reader.interface);
+    var page_header = try page_header_reader.read(arena, &file.file_reader.interface);
+
+    // Store values in the dictionary page, these values will be referenced in data pages
+    var dict_values: ?[]Inner = null;
+    if (page_header.type == .DICTIONARY_PAGE) {
+        dict_values = try readDictionaryPage(Inner, arena, page_header, file, metadata.codec);
+
+        // Read the next page header to get data pages if we started with a dictionary page
+        page_header = try page_header_reader.read(arena, &file.file_reader.interface);
+    }
+
     switch (page_header.type) {
         .DATA_PAGE => {
             const data_page = page_header.data_page_header.?;
@@ -82,17 +92,16 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                     const indices = try arena.alloc(u32, num_encoded_values);
                     try physical.dictionary(u32, decoder, indices);
 
-                    try file.file_reader.seekTo(@intCast(metadata.dictionary_page_offset.?));
-                    const dict_page_header = try page_header_reader.read(arena, &file.file_reader.interface);
-                    const header = dict_page_header.dictionary_page_header.?;
-
-                    const dict_decoder = try decoderForPage(arena, &file.file_reader.interface, metadata.codec);
-                    const dict_values = try arena.alloc(Inner, @intCast(header.num_values));
-                    try physical.plain(Inner, arena, dict_decoder, dict_values);
+                    // We haven't read the dictionary page yet, read it now
+                    if (dict_values == null) {
+                        try file.file_reader.seekTo(@intCast(metadata.dictionary_page_offset.?));
+                        const dicttionary_page_header = try page_header_reader.read(arena, &file.file_reader.interface);
+                        dict_values = try readDictionaryPage(Inner, arena, dicttionary_page_header, file, metadata.codec);
+                    }
 
                     const values = try arena.alloc(Inner, indices.len);
                     for (indices, 0..) |idx, i| {
-                        values[i] = dict_values[idx];
+                        values[i] = dict_values.?[idx];
                     }
                     break :blk values;
                 },
@@ -244,6 +253,19 @@ fn decoderForPage(arena: std.mem.Allocator, inner_reader: *Reader, codec: parque
             return error.UnsupportedCodec;
         },
     };
+}
+
+fn readDictionaryPage(comptime T: type, arena: std.mem.Allocator, page_header: parquet_schema.PageHeader, file: *File, codec: parquet_schema.CompressionCodec) ![]T {
+    const header = page_header.dictionary_page_header orelse return error.MissingDictionaryPageHeader;
+    if (header.encoding != .PLAIN and header.encoding != .PLAIN_DICTIONARY) {
+        std.debug.print("Unsupported encoding in dictionary page: {any}\n", .{header.encoding});
+        return error.UnexpectedEncodingInDictionaryPage;
+    }
+
+    const dict_decoder = try decoderForPage(arena, &file.file_reader.interface, codec);
+    const dict_values = try arena.alloc(T, @intCast(header.num_values));
+    try physical.plain(T, arena, dict_decoder, dict_values);
+    return dict_values;
 }
 
 fn unwrapOptional(comptime T: type) type {
