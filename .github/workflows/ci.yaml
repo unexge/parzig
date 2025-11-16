@@ -14,4 +14,4 @@ jobs:
         with:
           submodules: recursive
       - uses: mlugg/setup-zig@v2
-      - run: zig build test
+      - run: zig build test --summary all
