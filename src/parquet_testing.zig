@@ -459,6 +459,19 @@ test "column chunk key-value metadata" {
     try testing.expectEqual(null, rg.rg.columns[1].meta_data.?.key_value_metadata);
 }
 
+test "empty and compressed v2 data page" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/page_v2_empty_compressed.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(10, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    try testing.expectEqualSlices(?i32, &[_]?i32{ null, null, null, null, null, null, null, null, null, null }, try rg.readColumn(?i32, 0));
+}
+
 test "rle boolean encoding" {
     // Generated with this convoluted Python one-liner:
     // import polars as pl;import json;df = pl.read_parquet("./testdata/parquet-testing/data/rle_boolean_encoding.parquet");"[_]?bool{" + ", ".join([json.dumps(x[0]) for x in df.select('datatype_boolean').iter_rows()]) + "}"

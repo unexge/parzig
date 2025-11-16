@@ -170,6 +170,19 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
 
                 const buf = try arena.alloc(Inner, num_encoded_values);
                 switch (data_page.encoding) {
+                    .PLAIN => {
+                        try physical.plain(Inner, arena, decoder, buf);
+                    },
+                    .PLAIN_DICTIONARY, .RLE_DICTIONARY => {
+                        if (dict_values == null) return error.MissingDictionaryPage;
+
+                        const indices = try arena.alloc(u32, num_encoded_values);
+                        try physical.dictionary(u32, decoder, indices);
+
+                        for (indices, 0..) |idx, i| {
+                            buf[i] = dict_values.?[idx];
+                        }
+                    },
                     .RLE => {
                         if (Inner != bool) {
                             return error.UnsupportedType;
