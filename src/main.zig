@@ -83,11 +83,11 @@ fn printValues(comptime T: type, data: []?T) void {
             }
 
             std.debug.print("..\n", .{});
-            std.debug.print("{d} more\n", .{data.len - 10});
+            std.debug.print("{d} more\n\n", .{data.len - 10});
         } else {
             for (data, 0..) |item, i| {
                 if (i == data.len - 1) {
-                    std.debug.print("{?s}\n", .{item});
+                    std.debug.print("{?s}\n\n", .{item});
                 } else {
                     std.debug.print("{?s}, ", .{item});
                 }
@@ -100,7 +100,7 @@ fn printValues(comptime T: type, data: []?T) void {
     if (data.len > 10) {
         std.debug.print("{any}\n", .{data[0..10]});
         std.debug.print("..\n", .{});
-        std.debug.print("{d} more\n", .{data.len - 10});
+        std.debug.print("{d} more\n\n", .{data.len - 10});
     } else {
         std.debug.print("{any}\n\n", .{data});
     }

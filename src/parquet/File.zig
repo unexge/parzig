@@ -100,7 +100,7 @@ pub fn repAndDefLevelOfColumn(self: *File, path: [][]const u8) !std.meta.Tuple(&
 
 pub fn readLevelDataV1(self: *File, reader: *Reader, bit_width: u8, num_values: usize) ![]u16 {
     const values = try self.arena.allocator().alloc(u16, num_values);
-    try physical.runLengthBitPackingHybridLengthPrepended(u16, reader, bit_width, values);
+    try physical.runLengthBitPackedHybridLengthPrepended(u16, reader, bit_width, values);
     return values;
 }
 
@@ -109,7 +109,7 @@ pub fn readLevelDataV2(self: *File, reader: *Reader, bit_width: u8, num_values: 
     var limited_reader = reader.limited(.limited(length), &reader_buf);
 
     const values = try self.arena.allocator().alloc(u16, num_values);
-    try physical.runLengthBitPackingHybrid(u16, &limited_reader.interface, bit_width, values);
+    try physical.runLengthBitPackedHybrid(u16, &limited_reader.interface, bit_width, values);
     return values;
 }
 

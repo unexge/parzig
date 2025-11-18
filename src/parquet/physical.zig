@@ -58,17 +58,17 @@ pub fn plain(comptime T: type, arena: Allocator, reader: *Reader, buf: []T) !voi
 
 pub fn dictionary(comptime T: type, reader: *Reader, buf: []T) !void {
     const bit_width = try reader.takeByte();
-    return runLengthBitPackingHybrid(T, reader, bit_width, buf);
+    return runLengthBitPackedHybrid(T, reader, bit_width, buf);
 }
 
-pub fn runLengthBitPackingHybridLengthPrepended(comptime T: type, reader: *Reader, bit_width: u8, buf: []T) !void {
+pub fn runLengthBitPackedHybridLengthPrepended(comptime T: type, reader: *Reader, bit_width: u8, buf: []T) !void {
     const lenght = try reader.takeVarInt(u32, .little, 4);
     if (lenght == 0) return error.EmptyBuffer;
 
-    return runLengthBitPackingHybrid(T, reader, bit_width, buf);
+    return runLengthBitPackedHybrid(T, reader, bit_width, buf);
 }
 
-pub fn runLengthBitPackingHybrid(comptime T: type, reader: *Reader, bit_width: u8, buf: []T) !void {
+pub fn runLengthBitPackedHybrid(comptime T: type, reader: *Reader, bit_width: u8, buf: []T) !void {
     var pos: usize = 0;
     while (buf.len > pos) {
         const header = try reader.takeLeb128(u64);
