@@ -12,7 +12,7 @@
 
 pub fn plain(comptime T: type, arena: Allocator, reader: *Reader, buf: []T) !void {
     if (T == bool) {
-        var bit_reader: BitReader = .init(reader, 1);
+        var bit_reader: BitReader = .init(reader, .little, 1);
         for (buf) |*item| {
             item.* = try bit_reader.take(bool);
         }
@@ -73,8 +73,8 @@ pub fn runLengthBitPackedHybrid(comptime T: type, reader: *Reader, bit_width: u8
     while (buf.len > pos) {
         const header = try reader.takeLeb128(u64);
         if (header & 1 == 1) {
-            // bit-packet run
-            var bit_reader: BitReader = .init(reader, bit_width);
+            // bit-packed run
+            var bit_reader: BitReader = .init(reader, .little, bit_width);
             const len = @min(buf.len - pos, @as(usize, @intCast((header >> 1) * 8)));
             for (0..len) |i| {
                 buf[pos + i] = try bit_reader.take(T);
@@ -82,7 +82,7 @@ pub fn runLengthBitPackedHybrid(comptime T: type, reader: *Reader, bit_width: u8
             pos += len;
         } else {
             // run length run
-            var bit_reader: BitReader = .init(reader, bit_width);
+            var bit_reader: BitReader = .init(reader, .little, bit_width);
             const len = @min(buf.len - pos, @as(usize, @intCast(header >> 1)));
             const val = try bit_reader.take(T);
             for (0..len) |i| {
@@ -93,8 +93,11 @@ pub fn runLengthBitPackedHybrid(comptime T: type, reader: *Reader, bit_width: u8
     }
 }
 
-pub fn bitPacked() !void {
-    return error.NotImplemented;
+pub fn bitPacked(comptime T: type, reader: *Reader, bit_width: u8, buf: []T) !void {
+    var bit_reader: BitReader = .init(reader, .big, bit_width);
+    for (0..buf.len) |i| {
+        buf[i] = try bit_reader.take(T);
+    }
 }
 
 pub fn delta(comptime T: type, arena: Allocator, reader: *Reader, buf: []T) !usize {
@@ -143,7 +146,7 @@ pub fn delta(comptime T: type, arena: Allocator, reader: *Reader, buf: []T) !usi
                 break;
             }
 
-            var bit_reader: BitReader = .init(reader, bit_width);
+            var bit_reader: BitReader = .init(reader, .little, bit_width);
 
             for (0..miniblock_value_count) |_| {
                 const delta_val: T = @truncate(try bit_reader.take(i256));
@@ -258,6 +261,18 @@ pub fn byteStreamSplit(comptime T: type, arena: Allocator, reader: *Reader, buf:
         buf[i] = @bitCast(int);
     }
 }
+
+test bitPacked {
+    var input: Reader = .fixed(&.{ 0b00000101, 0b00111001, 0b01110111 });
+    const buf = try testing.allocator.alloc(u8, 8);
+    defer testing.allocator.free(buf);
+
+    try bitPacked(u8, &input, 3, buf);
+
+    try testing.expectEqualSlices(u8, &.{ 0, 1, 2, 3, 4, 5, 6, 7 }, buf);
+}
+
+const testing = std.testing;
 
 const protocol_compact = @import("../thrift.zig").protocol_compact;
 const BitReader = @import("./BitReader.zig");
