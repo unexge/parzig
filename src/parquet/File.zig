@@ -95,12 +95,23 @@ pub fn repAndDefLevelOfColumn(self: *File, path: [][]const u8) !std.meta.Tuple(&
 
     const repetition_type = field.repetition_type orelse parquet_schema.FieldRepetitionType.OPTIONAL;
 
-    return .{ if (repetition_type == .REPEATED) 1 else 0, 1 };
+    return .{ 0, if (repetition_type == .REQUIRED) 0 else 1 };
 }
 
-pub fn readLevelDataV1(self: *File, reader: *Reader, bit_width: u8, num_values: usize) ![]u16 {
+pub fn readLevelDataV1(self: *File, reader: *Reader, encoding: parquet_schema.Encoding, bit_width: u8, num_values: usize) ![]u16 {
     const values = try self.arena.allocator().alloc(u16, num_values);
-    try physical.runLengthBitPackedHybridLengthPrepended(u16, reader, bit_width, values);
+    switch (encoding) {
+        .BIT_PACKED => {
+            try physical.bitPacked(u16, reader, bit_width, values);
+        },
+        .RLE => {
+            try physical.runLengthBitPackedHybridLengthPrepended(u16, reader, bit_width, values);
+        },
+        else => {
+            std.debug.print("Unsupported repetition/definition level encoding: {any}\n", .{encoding});
+            return error.UnsupportedDefinitionLevelEncoding;
+        },
+    }
     return values;
 }
 

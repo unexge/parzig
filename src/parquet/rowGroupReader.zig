@@ -79,23 +79,13 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 const decoder = try decoderForPage(arena, &file.file_reader.interface, metadata.codec);
 
                 if (rep_level > 0) {
-                    if (data_page.repetition_level_encoding != .RLE) {
-                        std.debug.print("Unsupported repetition level encoding: {any}\n", .{data_page.repetition_level_encoding});
-                        return error.UnsupportedRepetitionLevelEncoding;
-                    }
-
-                    const values = try file.readLevelDataV1(decoder, rep_level, num_values);
+                    const values = try file.readLevelDataV1(decoder, data_page.repetition_level_encoding, rep_level, num_values);
                     defer arena.free(values);
                 }
 
                 var def_values: []u16 = undefined;
                 if (def_level > 0) {
-                    if (data_page.definition_level_encoding != .RLE) {
-                        std.debug.print("Unsupported definition level encoding: {any}\n", .{data_page.definition_level_encoding});
-                        return error.UnsupportedDefinitionLevelEncoding;
-                    }
-
-                    def_values = try file.readLevelDataV1(decoder, def_level, num_values);
+                    def_values = try file.readLevelDataV1(decoder, data_page.definition_level_encoding, def_level, num_values);
 
                     num_encoded_values = blk: {
                         var i: usize = 0;
