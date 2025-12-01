@@ -79,23 +79,63 @@ pub fn deinit(self: *File) void {
     self.arena.deinit();
 }
 
-pub fn repAndDefLevelOfColumn(self: *File, path: [][]const u8) !std.meta.Tuple(&[_]type{ u8, u8 }) {
-    if (path.len == 0) {
-        return error.MissingField;
-    }
-    if (path.len > 1) {
-        return error.NestedFieldsAreNotSupported;
+pub fn findSchemaElement(self: *File, path: [][]const u8) ?std.meta.Tuple(&[_]type{ u8, u8, parquet_schema.SchemaElement }) {
+    if (path.len == 0 or self.metadata.schema.len < 2) {
+        return null;
     }
 
-    const field = for (self.metadata.schema) |elem| {
-        if (mem.eql(u8, elem.name, path[0])) {
-            break elem;
+    var current_idx: usize = 1; // Skip the root element
+    var max_definition_level: u8 = 0;
+    var max_repetition_level: u8 = 0;
+    var elem: parquet_schema.SchemaElement = undefined;
+
+    for (path) |part| {
+        // Search `part` starting from the `current_idx`
+        const found_idx = blk: {
+            while (current_idx < self.metadata.schema.len) {
+                elem = self.metadata.schema[current_idx];
+                if (mem.eql(u8, elem.name, part)) {
+                    break :blk current_idx;
+                }
+
+                // Skip this element and all its children
+                var skip_idx = current_idx;
+                var nodes_to_skip: i32 = 1; // Need to skip the current one at least
+
+                while (nodes_to_skip > 0 and skip_idx < self.metadata.schema.len) {
+                    if (self.metadata.schema[skip_idx].num_children) |num_children| {
+                        nodes_to_skip += @as(i32, @intCast(num_children));
+                    }
+
+                    nodes_to_skip -= 1;
+                    skip_idx += 1;
+                }
+
+                current_idx = skip_idx;
+            }
+
+            // `part` not found
+            return null;
+        };
+
+        elem = self.metadata.schema[found_idx];
+
+        if (elem.repetition_type) |repetition_type| {
+            switch (repetition_type) {
+                .REQUIRED => {},
+                .OPTIONAL => max_definition_level += 1,
+                .REPEATED => {
+                    max_repetition_level += 1;
+                    max_definition_level += 1;
+                },
+            }
         }
-    } else return error.UnkonwnField;
 
-    const repetition_type = field.repetition_type orelse parquet_schema.FieldRepetitionType.OPTIONAL;
+        // Proceed to first child of the found element
+        current_idx = found_idx + 1;
+    }
 
-    return .{ 0, if (repetition_type == .REQUIRED) 0 else 1 };
+    return .{ max_definition_level, max_repetition_level, elem };
 }
 
 pub fn readLevelDataV1(self: *File, reader: *Reader, encoding: parquet_schema.Encoding, bit_width: u8, num_values: usize) ![]u16 {
