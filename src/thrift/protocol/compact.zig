@@ -167,6 +167,7 @@ pub fn StructReader(comptime T: type) type {
 
     const max_field_id = blk: {
         comptime var max_field_id = 0;
+        @setEvalBranchQuota(3000);
         inline for (fields, 0..) |_, i| {
             _ = comptime std.meta.intToEnum(std.meta.FieldEnum(T), i) catch continue;
             const field_id = comptime T.fieldId(@enumFromInt(i));
@@ -191,7 +192,7 @@ pub fn StructReader(comptime T: type) type {
 
     const field_names = blk: {
         var field_names: [max_field_id][]const u8 = undefined;
-        @setEvalBranchQuota(3000);
+        @setEvalBranchQuota(5000);
         inline for (fields, 0..) |field, i| {
             _ = comptime std.meta.intToEnum(std.meta.FieldEnum(T), i) catch continue;
             const field_id = comptime T.fieldId(@enumFromInt(i));
