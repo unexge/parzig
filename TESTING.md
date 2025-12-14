@@ -37,9 +37,9 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `hadoop_lz4_compressed.parquet`                  | 🚧     |
 | `hadoop_lz4_compressed_larger.parquet`           | 🚧     |
 | `incorrect_map_schema.parquet`                   | 🚧     |
-| `int32_decimal.parquet`                          | 🚧     |
-| `int32_with_null_pages.parquet`                  | 🚧     |
-| `int64_decimal.parquet`                          | 🚧     |
+| `int32_decimal.parquet`                          | ✅     |
+| `int32_with_null_pages.parquet`                  | ✅     |
+| `int64_decimal.parquet`                          | ✅     |
 | `large_string_map.brotli.parquet`                | 🚧     |
 | `list_columns.parquet`                           | 🚧     |
 | `lz4_raw_compressed.parquet`                     | 🚧     |

@@ -569,3 +569,67 @@ test "datapage v2 snappy compressed" {
     // TODO: Need to unflatten the array once we handle repetition levels: [1, 2, 3], null, null, [1, 2, 3], [1, 2]
     try testing.expectEqualSlices(?i32, &[_]?i32{ 1, 2, 3, null, null, 1, 2, 3, 1, 2 }, try rg.readColumn(?i32, 4));
 }
+
+test "int32 decimal" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/int32_decimal.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(24, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(i32, 0);
+    try testing.expectEqualSlices(i32, &[_]i32{ 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2100, 2200, 2300, 2400 }, values);
+}
+
+test "int32 with null pages" {
+    var reader_buf: [4096]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/int32_with_null_pages.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(1000, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(?i32, 0);
+    try testing.expectEqual(@as(?i32, -654807448), values[0]);
+    try testing.expectEqual(@as(?i32, -465559769), values[1]);
+    try testing.expectEqual(@as(?i32, -34563097), values[2]);
+    try testing.expectEqual(@as(?i32, 398454479), values[3]);
+    try testing.expectEqual(@as(?i32, null), values[4]);
+    try testing.expectEqual(@as(?i32, 2018642597), values[5]);
+    try testing.expectEqual(@as(?i32, 486675473), values[6]);
+    try testing.expectEqual(@as(?i32, 546345848), values[7]);
+    try testing.expectEqual(@as(?i32, -117215667), values[8]);
+    try testing.expectEqual(@as(?i32, -352034204), values[9]);
+    try testing.expectEqual(@as(?i32, -1172816214), values[10]);
+    try testing.expectEqual(@as(?i32, -2023202216), values[11]);
+    try testing.expectEqual(@as(?i32, 824947735), values[12]);
+    try testing.expectEqual(@as(?i32, null), values[13]);
+    try testing.expectEqual(@as(?i32, 693139096), values[14]);
+    try testing.expectEqual(@as(?i32, -890578380), values[15]);
+    try testing.expectEqual(@as(?i32, -1614440520), values[16]);
+    try testing.expectEqual(@as(?i32, -1375171157), values[17]);
+    try testing.expectEqual(@as(?i32, 26721177), values[18]);
+    try testing.expectEqual(@as(?i32, 370689415), values[19]);
+}
+
+test "int64 decimal" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/int64_decimal.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(24, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(i64, 0);
+    try testing.expectEqualSlices(i64, &[_]i64{ 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2100, 2200, 2300, 2400 }, values);
+}
