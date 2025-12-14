@@ -633,3 +633,305 @@ test "int64 decimal" {
     const values = try rg.readColumn(i64, 0);
     try testing.expectEqualSlices(i64, &[_]i64{ 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2100, 2200, 2300, 2400 }, values);
 }
+
+test "page v2 empty compressed" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/page_v2_empty_compressed.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(10, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(?i32, 0);
+    try testing.expectEqual(@as(usize, 10), values.len);
+    // All values are null in this file
+    for (values) |v| {
+        try testing.expectEqual(@as(?i32, null), v);
+    }
+}
+
+test "null list" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/null_list.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(1, file.metadata.num_rows);
+}
+
+test "nan in stats" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/nan_in_stats.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(2, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(f64, 0);
+    try testing.expectEqual(2, values.len);
+    try testing.expectEqual(1.0, values[0]);
+    try testing.expect(std.math.isNan(values[1]));
+}
+
+test "sort columns" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/sort_columns.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(2, file.metadata.row_groups.len);
+    try testing.expectEqual(6, file.metadata.num_rows);
+
+    var rg0 = file.rowGroup(0);
+    const col_a0 = try rg0.readColumn(?i64, 0);
+    try testing.expectEqual(@as(?i64, null), col_a0[0]);
+    try testing.expectEqual(@as(?i64, 2), col_a0[1]);
+    try testing.expectEqual(@as(?i64, 1), col_a0[2]);
+    const col_b0 = try rg0.readColumn([]const u8, 1);
+    try testing.expectEqualDeep(&[_][]const u8{ "a", "b", "c" }, col_b0);
+
+    var rg1 = file.rowGroup(1);
+    const col_a1 = try rg1.readColumn(?i64, 0);
+    try testing.expectEqual(@as(?i64, null), col_a1[0]);
+    try testing.expectEqual(@as(?i64, 2), col_a1[1]);
+    try testing.expectEqual(@as(?i64, 1), col_a1[2]);
+    const col_b1 = try rg1.readColumn([]const u8, 1);
+    try testing.expectEqualDeep(&[_][]const u8{ "a", "b", "c" }, col_b1);
+}
+
+test "overflow i16 page cnt" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/overflow_i16_page_cnt.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(40000, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(bool, 0);
+    try testing.expectEqual(@as(usize, 40000), values.len);
+    // All values should be false
+    for (values) |v| {
+        try testing.expectEqual(false, v);
+    }
+}
+
+test "datapage v1 corrupt checksum" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/datapage_v1-corrupt-checksum.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(5120, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const col_a = try rg.readColumn(i32, 0);
+    const col_b = try rg.readColumn(i32, 1);
+
+    try testing.expectEqual(@as(i32, 50462976), col_a[0]);
+    try testing.expectEqual(@as(i32, 1734763876), col_b[0]);
+    try testing.expectEqual(@as(i32, 117835012), col_a[1]);
+    try testing.expectEqual(@as(i32, 1802135912), col_b[1]);
+}
+
+test "datapage v1 snappy compressed checksum" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/datapage_v1-snappy-compressed-checksum.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(5120, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const col_a = try rg.readColumn(i32, 0);
+    const col_b = try rg.readColumn(i32, 1);
+
+    try testing.expectEqual(@as(i32, 50462976), col_a[0]);
+    try testing.expectEqual(@as(i32, 1734763876), col_b[0]);
+    try testing.expectEqual(@as(i32, 117835012), col_a[1]);
+    try testing.expectEqual(@as(i32, 1802135912), col_b[1]);
+}
+
+test "datapage v1 uncompressed checksum" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/datapage_v1-uncompressed-checksum.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(5120, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const col_a = try rg.readColumn(i32, 0);
+    const col_b = try rg.readColumn(i32, 1);
+
+    try testing.expectEqual(@as(i32, 50462976), col_a[0]);
+    try testing.expectEqual(@as(i32, 1734763876), col_b[0]);
+    try testing.expectEqual(@as(i32, 117835012), col_a[1]);
+    try testing.expectEqual(@as(i32, 1802135912), col_b[1]);
+}
+
+test "plain dict uncompressed checksum" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/plain-dict-uncompressed-checksum.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(1000, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const col_a = try rg.readColumn(i64, 0);
+    try testing.expectEqual(@as(usize, 1000), col_a.len);
+    for (col_a) |v| {
+        try testing.expectEqual(@as(i64, 0), v);
+    }
+
+    const col_b = try rg.readColumn([]const u8, 1);
+    try testing.expectEqual(@as(usize, 1000), col_b.len);
+    for (col_b) |v| {
+        try testing.expectEqualStrings("a655fd0e-9949-4059-bcae-fd6a002a4652", v);
+    }
+}
+
+test "rle dict snappy checksum" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/rle-dict-snappy-checksum.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(1000, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const col_a = try rg.readColumn(i64, 0);
+    try testing.expectEqual(@as(usize, 1000), col_a.len);
+    for (col_a) |v| {
+        try testing.expectEqual(@as(i64, 0), v);
+    }
+
+    const col_b = try rg.readColumn([]const u8, 1);
+    try testing.expectEqual(@as(usize, 1000), col_b.len);
+    for (col_b) |v| {
+        try testing.expectEqualStrings("c95e263a-f5d4-401f-8107-5ca7146a1f98", v);
+    }
+}
+
+test "rle dict uncompressed corrupt checksum" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/rle-dict-uncompressed-corrupt-checksum.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(1000, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const col_a = try rg.readColumn(i64, 0);
+    try testing.expectEqual(@as(usize, 1000), col_a.len);
+    for (col_a) |v| {
+        try testing.expectEqual(@as(i64, 0), v);
+    }
+
+    const col_b = try rg.readColumn([]const u8, 1);
+    try testing.expectEqual(@as(usize, 1000), col_b.len);
+    for (col_b) |v| {
+        try testing.expectEqualStrings("6325c32b-f417-41aa-9e02-9b8601542aff", v);
+    }
+}
+
+test "map no value" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/map_no_value.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(3, file.metadata.num_rows);
+
+    // TODO: Assert fields once we handle repetition levels
+}
+
+test "nation dict malformed" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/nation.dict-malformed.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(25, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const col_a = try rg.readColumn(i32, 0);
+    try testing.expectEqual(@as(usize, 25), col_a.len);
+    try testing.expectEqual(@as(i32, 0), col_a[0]);
+    try testing.expectEqual(@as(i32, 1), col_a[1]);
+}
+
+test "nested structs rust" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/nested_structs.rust.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(1, file.metadata.num_rows);
+}
+
+test "non-nullable impala" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/nonnullable.impala.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(1, file.metadata.num_rows);
+}
+
+test "nulls snappy" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/nulls.snappy.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(8, file.metadata.num_rows);
+}
+
+test "old list structure" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/old_list_structure.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(1, file.metadata.num_rows);
+}
+
+test "repeated primitive no list" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/repeated_primitive_no_list.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(4, file.metadata.num_rows);
+}
