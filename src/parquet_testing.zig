@@ -500,3 +500,54 @@ test "single nan" {
     var rg = file.rowGroup(0);
     try testing.expectEqualSlices(?f64, &[_]?f64{null}, try rg.readColumn(?f64, 0));
 }
+
+test "float16 nonzeros and nans" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/float16_nonzeros_and_nans.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(8, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    // null, 1.0, -2.0, NaN, 0.0, -1.0, -0.0, 2.0
+    try testing.expectEqualSlices(?[2]u8, &[_]?[2]u8{ null, [_]u8{ 0, 60 }, [_]u8{ 0, 192 }, [_]u8{ 0, 126 }, [_]u8{ 0, 0 }, [_]u8{ 0, 188 }, [_]u8{ 0, 128 }, [_]u8{ 0, 64 } }, try rg.readColumn(?[2]u8, 0));
+}
+
+test "float16 zeros and nans" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/float16_zeros_and_nans.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(3, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    // null, 0.0, NaN
+    try testing.expectEqualSlices(?[2]u8, &[_]?[2]u8{ null, [_]u8{ 0, 0 }, [_]u8{ 0, 126 } }, try rg.readColumn(?[2]u8, 0));
+}
+
+test "fixed length decimal legacy" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/fixed_length_decimal_legacy.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(24, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    const values = try rg.readColumn([6]u8, 0);
+    try testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0, 0, 100 }, &values[0]); // 1.00
+    try testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0, 0, 200 }, &values[1]); // 2.00
+    try testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0, 1, 44 }, &values[2]); // 3.00
+    try testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0, 1, 144 }, &values[3]); // 4.00
+    try testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0, 1, 244 }, &values[4]); // 5.00
+    try testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0, 2, 88 }, &values[5]); // 6.00
+    try testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0, 2, 188 }, &values[6]); // 7.00
+    try testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0, 3, 32 }, &values[7]); // 8.00
+    try testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0, 3, 132 }, &values[8]); // 9.00
+    try testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0, 3, 232 }, &values[9]); // 10.00
+}

@@ -17,7 +17,11 @@ fn isAssignable(comptime T: type, parquet_type: parquet_schema.Type) bool {
         .INT96 => T == i96,
         .FLOAT => T == f32,
         .DOUBLE => T == f64,
-        .BYTE_ARRAY, .FIXED_LEN_BYTE_ARRAY => T == []const u8 or T == []u8,
+        .BYTE_ARRAY => T == []const u8 or T == []u8,
+        .FIXED_LEN_BYTE_ARRAY => switch (@typeInfo(T)) {
+            .array => |arr| arr.child == u8,
+            else => false,
+        },
     };
 }
 

@@ -205,12 +205,6 @@ pub fn deltaStrings(comptime T: type, arena: Allocator, reader: *Reader, buf: []
                 return error.UnsupportedType;
             }
         },
-        .array => |arr| {
-            if (arr.child != u8) {
-                std.debug.print("Array child type must be u8, not: {any}\n", .{@typeName(arr.child)});
-                return error.UnsupportedType;
-            }
-        },
         else => {
             std.debug.print("Unsupported type: {any}\n", .{@typeName(T)});
             return error.UnsupportedType;

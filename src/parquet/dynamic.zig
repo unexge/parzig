@@ -1,3 +1,4 @@
+const std = @import("std");
 const parquet_schema = @import("../generated/parquet.zig");
 const File = @import("./File.zig");
 const readColumnComptime = @import("./rowGroupReader.zig").readColumn;
@@ -10,11 +11,15 @@ pub const Values = union(enum) {
     float: []?f32,
     double: []?f64,
     byte_array: []?[]u8,
-    fixed_len_byte_array: []?[]u8,
+    fixed_len_byte_array_2: []?[2]u8,
+    fixed_len_byte_array_4: []?[4]u8,
+    fixed_len_byte_array_6: []?[6]u8,
+    fixed_len_byte_array_8: []?[8]u8,
 };
 
 pub fn readColumn(file: *File, column: *parquet_schema.ColumnChunk) !Values {
     const metadata = column.meta_data orelse return error.MissingColumnMetadata;
+
     return switch (metadata.type) {
         .BOOLEAN => .{ .boolean = try readColumnComptime(?bool, file, column) },
         .INT32 => .{ .int32 = try readColumnComptime(?i32, file, column) },
@@ -23,6 +28,20 @@ pub fn readColumn(file: *File, column: *parquet_schema.ColumnChunk) !Values {
         .FLOAT => .{ .float = try readColumnComptime(?f32, file, column) },
         .DOUBLE => .{ .double = try readColumnComptime(?f64, file, column) },
         .BYTE_ARRAY => .{ .byte_array = try readColumnComptime(?[]u8, file, column) },
-        .FIXED_LEN_BYTE_ARRAY => .{ .fixed_len_byte_array = try readColumnComptime(?[]u8, file, column) },
+        .FIXED_LEN_BYTE_ARRAY => {
+            _, _, const schema = file.findSchemaElement(metadata.path_in_schema) orelse return error.MissingSchemaElement;
+            const type_length = schema.type_length orelse return error.MissingTypeLength;
+
+            return switch (type_length) {
+                2 => .{ .fixed_len_byte_array_2 = try readColumnComptime(?[2]u8, file, column) },
+                4 => .{ .fixed_len_byte_array_4 = try readColumnComptime(?[4]u8, file, column) },
+                6 => .{ .fixed_len_byte_array_6 = try readColumnComptime(?[6]u8, file, column) },
+                8 => .{ .fixed_len_byte_array_8 = try readColumnComptime(?[8]u8, file, column) },
+                else => {
+                    std.debug.print("Unsupported type length for `FIXED_LEN_BYTE_ARRAY`: {d}\n", .{type_length});
+                    return error.UnsupportedFixedLength;
+                },
+            };
+        },
     };
 }

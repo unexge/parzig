@@ -63,7 +63,10 @@ pub fn main() !void {
                 .float => |data| printValues(f32, data),
                 .double => |data| printValues(f64, data),
                 .byte_array => |data| printValues([]u8, data),
-                .fixed_len_byte_array => |data| printValues([]u8, data),
+                .fixed_len_byte_array_2 => |data| printValues([2]u8, data),
+                .fixed_len_byte_array_4 => |data| printValues([4]u8, data),
+                .fixed_len_byte_array_6 => |data| printValues([6]u8, data),
+                .fixed_len_byte_array_8 => |data| printValues([8]u8, data),
             }
         }
     }

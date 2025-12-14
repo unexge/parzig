@@ -31,9 +31,9 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `dict-page-offset-zero.parquet`                  | 🚧     |
 | `fixed_length_byte_array.parquet`                | 🚧     |
 | `fixed_length_decimal.parquet`                   | 🚧     |
-| `fixed_length_decimal_legacy.parquet`            | 🚧     |
-| `float16_nonzeros_and_nans.parquet`              | 🚧     |
-| `float16_zeros_and_nans.parquet`                 | 🚧     |
+| `fixed_length_decimal_legacy.parquet`            | ✅     |
+| `float16_nonzeros_and_nans.parquet`              | ✅     |
+| `float16_zeros_and_nans.parquet`                 | ✅     |
 | `hadoop_lz4_compressed.parquet`                  | 🚧     |
 | `hadoop_lz4_compressed_larger.parquet`           | 🚧     |
 | `incorrect_map_schema.parquet`                   | 🚧     |
