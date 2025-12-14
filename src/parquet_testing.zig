@@ -551,3 +551,21 @@ test "fixed length decimal legacy" {
     try testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0, 3, 132 }, &values[8]); // 9.00
     try testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0, 3, 232 }, &values[9]); // 10.00
 }
+
+test "datapage v2 snappy compressed" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/datapage_v2.snappy.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    try testing.expectEqualDeep(&[_]?[]const u8{ "abc", "abc", "abc", null, "abc" }, try rg.readColumn(?[]const u8, 0));
+    try testing.expectEqualSlices(i32, &[_]i32{ 1, 2, 3, 4, 5 }, try rg.readColumn(i32, 1));
+    try testing.expectEqualSlices(f64, &[_]f64{ 2.0, 3.0, 4.0, 5.0, 2.0 }, try rg.readColumn(f64, 2));
+    try testing.expectEqualSlices(bool, &[_]bool{ true, true, true, false, true }, try rg.readColumn(bool, 3));
+    // TODO: Need to unflatten the array once we handle repetition levels: [1, 2, 3], null, null, [1, 2, 3], [1, 2]
+    try testing.expectEqualSlices(?i32, &[_]?i32{ 1, 2, 3, null, null, 1, 2, 3, 1, 2 }, try rg.readColumn(?i32, 4));
+}

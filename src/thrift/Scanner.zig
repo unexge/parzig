@@ -138,8 +138,8 @@ pub const Token = struct {
     pub fn eql(self: *const Token, other: *const Token) bool {
         return self == other or
             (self.kind == other.kind and
-            self.range.start == other.range.start and
-            self.range.end == other.range.end);
+                self.range.start == other.range.start and
+                self.range.end == other.range.end);
     }
 };
 

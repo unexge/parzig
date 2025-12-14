@@ -22,7 +22,7 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `datapage_v1-corrupt-checksum.parquet`           | 🚧     |
 | `datapage_v1-snappy-compressed-checksum.parquet` | 🚧     |
 | `datapage_v1-uncompressed-checksum.parquet`      | 🚧     |
-| `datapage_v2.snappy.parquet`                     | 🚧     |
+| `datapage_v2.snappy.parquet`                     | ✅     |
 | `delta_binary_packed.parquet`                    | ✅     |
 | `delta_byte_array.parquet`                       | ✅     |
 | `delta_encoding_optional_column.parquet`         | ✅     |
