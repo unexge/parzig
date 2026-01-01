@@ -4,6 +4,16 @@ const Reader = Io.Reader;
 const Limit = Io.Limit;
 const Writer = Io.Writer;
 
+/// LZ4 block format decompressor with streaming API.
+///
+/// Implements the LZ4 raw block format (without framing) for decompressing
+/// data pages in Parquet files. The decompressor uses a state machine to
+/// handle partial decompression across multiple calls, allowing efficient
+/// streaming decompression without loading entire blocks into memory.
+///
+/// The window_len constant (64KB) specifies the maximum lookback distance
+/// for match references. The provided buffer must be at least window_len
+/// bytes to properly handle all valid match offsets.
 pub const Decompress = struct {
     pub const window_len = 65536;
 
@@ -46,6 +56,18 @@ pub const Decompress = struct {
         };
     }
 
+    fn readContinuationBytes(input: *Reader, base_value: usize) Reader.StreamError!usize {
+        var result = base_value;
+        while (true) {
+            const byte = try input.takeByte();
+            result += byte;
+            if (byte != 255) break;
+            // Prevent malformed blocks from causing excessive values
+            if (result > window_len) return error.ReadFailed;
+        }
+        return result;
+    }
+
     fn stream(r: *Reader, w: *Writer, limit: Limit) Reader.StreamError!usize {
         const d: *Decompress = @fieldParentPtr("reader", r);
         const remaining = @intFromEnum(limit);
@@ -68,13 +90,7 @@ pub const Decompress = struct {
                 // Read literal length (continuation bytes if literal_len_short == 15)
                 var literal_len: usize = literal_len_short;
                 if (literal_len_short == 15) {
-                    while (true) {
-                        const byte = try d.input.takeByte();
-                        literal_len += byte;
-                        if (byte != 255) break;
-                        // Prevent malformed blocks from causing excessive memory allocation
-                        if (literal_len > window_len) return error.ReadFailed;
-                    }
+                    literal_len = try readContinuationBytes(d.input, literal_len_short);
                 }
 
                 // Transition to literal state (will read literals first)
@@ -110,9 +126,7 @@ pub const Decompress = struct {
             .read_offset => |*ro| {
                 const offset = try d.input.takeInt(u16, .little);
                 if (offset == 0) {
-                    // Invalid offset
-                    d.state = .eof;
-                    return error.EndOfStream;
+                    return error.ReadFailed;
                 }
 
                 const match_len_short = ro.match_len_short;
@@ -134,16 +148,8 @@ pub const Decompress = struct {
                 continue :read d.state;
             },
             .read_match_len => |*rml| {
-                // Read match length continuation bytes
-                // Start with the short value shifted by 4 bits
-                var match_len: usize = rml.match_len_short + 4;
-                while (true) {
-                    const byte = try d.input.takeByte();
-                    match_len += byte;
-                    if (byte != 255) break;
-                    // Prevent malformed blocks from causing excessive match lengths
-                    if (match_len > window_len) return error.ReadFailed;
-                }
+                // Read match length continuation bytes (minimum match is 4 bytes)
+                const match_len = try readContinuationBytes(d.input, rml.match_len_short + 4);
 
                 d.state = .{ .match = .{
                     .offset = rml.offset,
@@ -157,23 +163,26 @@ pub const Decompress = struct {
                     continue :read d.state;
                 }
 
-                std.debug.assert(match_data.offset > 0);
-                // Note: w.end is the total bytes written so far, should be able to match
                 if (match_data.offset > w.end) {
-                    std.debug.print("ERROR: Match offset {d} > w.end {d}\n", .{ match_data.offset, w.end });
-                    return error.EndOfStream;
+                    return error.ReadFailed;
                 }
 
-                // For overlapping matches, copy one byte at a time to handle the case
-                // where the match source hasn't been fully written yet
                 const n = @min(match_data.len, remaining);
                 const src_start = w.end - match_data.offset;
                 const dst = try w.writableSliceGreedyPreserve(Decompress.window_len, n);
 
-                // Copy byte by byte from the source position
-                for (0..n) |i| {
-                    const src_idx = src_start + (i % match_data.offset);
-                    dst[i] = w.buffer[src_idx];
+                if (match_data.offset >= n) {
+                    // Non-overlapping match: source and destination do not overlap, so we can
+                    // copy the bytes directly without modulo.
+                    const src = w.buffer[src_start .. src_start + n];
+                    @memcpy(dst[0..n], src);
+                } else {
+                    // Overlapping match: copy byte-by-byte using modulo to repeat the source
+                    // sequence as needed.
+                    for (0..n) |i| {
+                        const src_idx = src_start + (i % match_data.offset);
+                        dst[i] = w.buffer[src_idx];
+                    }
                 }
 
                 match_data.len -= n;
@@ -239,6 +248,14 @@ test "match copying backwards in buffer" {
     try expectDecoded("\x24AB\x02\x00", "ABABABABAB");
 }
 
+test "zero offset error" {
+    try expectDecodedError("\x11A\x00\x00");
+}
+
+test "match offset exceeding available data error" {
+    try expectDecodedError("\x14X\xFF\x00");
+}
+
 fn expectDecoded(input: []const u8, expected: []const u8) !void {
     var fixed: Reader = .fixed(input);
 
@@ -250,4 +267,17 @@ fn expectDecoded(input: []const u8, expected: []const u8) !void {
 
     _ = try decompress.reader.streamRemaining(&decoded.writer);
     try testing.expectEqualSlices(u8, expected, decoded.written());
+}
+
+fn expectDecodedError(input: []const u8) !void {
+    var fixed: Reader = .fixed(input);
+
+    var decompress_buf: [Decompress.window_len]u8 = undefined;
+    var decompress = Decompress.init(&fixed, &decompress_buf);
+
+    var decoded: Writer.Allocating = .init(testing.allocator);
+    defer decoded.deinit();
+
+    const result = decompress.reader.streamRemaining(&decoded.writer);
+    try testing.expect(result == error.ReadFailed or result == error.EndOfStream);
 }
