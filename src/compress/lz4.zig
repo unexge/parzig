@@ -60,7 +60,9 @@ pub const Decompress = struct {
         var result = base_value;
         while (true) {
             const byte = try input.takeByte();
-            result += byte;
+            const sum = @addWithOverflow(result, @as(usize, byte));
+            if (sum[1] != 0) return error.ReadFailed;
+            result = sum[0];
             if (byte != 255) break;
             // Prevent malformed blocks from causing excessive values
             if (result > window_len) return error.ReadFailed;
