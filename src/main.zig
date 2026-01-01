@@ -15,11 +15,11 @@ pub fn main() !void {
     const path = args.next() orelse return error.MissingArgument;
     std.debug.print("Parsing {s}\n", .{path});
 
-    var threaded: Io.Threaded = .init(allocator);
+    var threaded: Io.Threaded = .init(allocator, .{});
     defer threaded.deinit();
     const io = threaded.io();
 
-    const file = try Io.Dir.cwd().openFile(io, path, .{});
+    const file = try Io.Dir.cwd().openFile(io, path, .{ .mode = .read_only });
     var read_buffer: [10240]u8 = undefined;
     var file_reader = file.reader(io, &read_buffer);
     var parquet_file = try parzig.parquet.File.read(allocator, &file_reader);
@@ -71,7 +71,7 @@ pub fn main() !void {
         }
     }
 
-    return std.process.cleanExit();
+    return std.process.cleanExit(io);
 }
 
 fn printValues(comptime T: type, data: []?T) void {
