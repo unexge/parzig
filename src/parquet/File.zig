@@ -1,8 +1,8 @@
 const std = @import("std");
 const Io = std.Io;
+const FileReader = std.Io.File.Reader;
 const Reader = std.Io.Reader;
 const mem = std.mem;
-const fs = std.fs;
 
 const parquet_schema = @import("../generated/parquet.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
@@ -19,7 +19,7 @@ const MIN_SIZE = MAGIC.len + FOOTER_SIZE;
 
 io: Io,
 arena: std.heap.ArenaAllocator,
-file_reader: *fs.File.Reader,
+file_reader: *FileReader,
 metadata: parquet_schema.FileMetaData,
 
 pub const RowGroup = struct {
@@ -35,7 +35,7 @@ pub const RowGroup = struct {
     }
 };
 
-pub fn read(allocator: mem.Allocator, file_reader: *fs.File.Reader) !File {
+pub fn read(allocator: mem.Allocator, file_reader: *FileReader) !File {
     const io = file_reader.io;
 
     const size = try file_reader.getSize();
@@ -172,10 +172,10 @@ test "missing PAR1 header" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const file = try tmp.dir.createFile("test", .{ .exclusive = true, .read = true });
-    defer file.close();
+    const file = try tmp.dir.createFile(std.testing.io, "test", .{ .exclusive = true, .read = true });
+    defer file.close(std.testing.io);
     var writer_buf: [1024]u8 = undefined;
-    var file_writer = file.writer(&writer_buf);
+    var file_writer = file.writer(std.testing.io, &writer_buf);
     try file_writer.interface.writeAll("noheader" ** 2);
     try file_writer.interface.flush();
 
@@ -189,10 +189,10 @@ test "missing PAR1 footer" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const file = try tmp.dir.createFile("test", .{ .exclusive = true, .read = true });
-    defer file.close();
+    const file = try tmp.dir.createFile(std.testing.io, "test", .{ .exclusive = true, .read = true });
+    defer file.close(std.testing.io);
     var writer_buf: [1024]u8 = undefined;
-    var file_writer = file.writer(&writer_buf);
+    var file_writer = file.writer(std.testing.io, &writer_buf);
     try file_writer.interface.writeAll("PAR1nofooter" ** 2);
     try file_writer.interface.flush();
 
@@ -206,10 +206,10 @@ test "missing metadata length" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const file = try tmp.dir.createFile("test", .{ .exclusive = true, .read = true });
-    defer file.close();
+    const file = try tmp.dir.createFile(std.testing.io, "test", .{ .exclusive = true, .read = true });
+    defer file.close(std.testing.io);
     var writer_buf: [1024]u8 = undefined;
-    var file_writer = file.writer(&writer_buf);
+    var file_writer = file.writer(std.testing.io, &writer_buf);
     try file_writer.interface.writeAll("PAR1aPAR1");
     try file_writer.interface.flush();
 
