@@ -23,6 +23,12 @@ Use Jujutsu (`jj`) for version control.
 - Check current diff: `jj diff -f main`
 - Commit changes: `jj commit -m "Your commit message"`
 
+## Addressing PR feedback
+Each change you make will go through a code review process on GitHub. To address feedback, you can run: 
+```bash
+$ gh pr-review review view https://github.com/unexge/parzig/pull/<PR_NUMBER> --unresolved --not_outdated
+```
+
 ## Testing
 Make sure to add tests for any changes. The tests are either located in the same file as the code in `test` blocks,
 or in the `src/parquet_testing.zig` file for Parquet comformance tests.
