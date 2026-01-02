@@ -42,8 +42,8 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `int64_decimal.parquet`                          | ✅     |                           |
 | `large_string_map.brotli.parquet`                | 🚧     | BROTLI compression        |
 | `list_columns.parquet`                           | 🚧     | Repetition levels         |
-| `lz4_raw_compressed.parquet`                     | 🚧     | LZ4 (raw) compression     |
-| `lz4_raw_compressed_larger.parquet`              | 🚧     | LZ4 (raw) compression     |
+| `lz4_raw_compressed.parquet`                     | 🚧     | Uses deprecated LZ4, not LZ4_RAW |
+| `lz4_raw_compressed_larger.parquet`              | 🚧     | Uses deprecated LZ4, not LZ4_RAW |
 | `map_no_value.parquet`                           | 🚧     | Repetition levels         |
 | `nan_in_stats.parquet`                           | ✅     |                           |
 | `nation.dict-malformed.parquet`                  | ✅     |                           |
@@ -94,19 +94,25 @@ These files use nested schemas (LIST, MAP, STRUCT) that require repetition level
 ### Compression
 These files use compression codecs that are not yet implemented:
 
-**LZ4 (Hadoop format):**
+**LZ4 (deprecated Hadoop format):**
 - `hadoop_lz4_compressed.parquet`
 - `hadoop_lz4_compressed_larger.parquet`
+- `lz4_raw_compressed.parquet` (confusingly named; uses deprecated LZ4, not LZ4_RAW)
+- `lz4_raw_compressed_larger.parquet` (confusingly named; uses deprecated LZ4, not LZ4_RAW)
 
-**LZ4 (raw format):**
-- `lz4_raw_compressed.parquet`
-- `lz4_raw_compressed_larger.parquet`
-
-**LZ4 (non-Hadoop format):**
+**LZ4 (non-Hadoop/deprecated format):**
 - `non_hadoop_lz4_compressed.parquet`
 
 **BROTLI:**
 - `large_string_map.brotli.parquet`
+
+**Note on LZ4 vs LZ4_RAW:**
+The Parquet format specifies two different LZ4 compression codecs:
+- **LZ4** (codec value 5): Deprecated codec with Hadoop framing (undocumented extra bytes)
+- **LZ4_RAW** (codec value 7): Modern codec using pure LZ4 block format, specified in Parquet format v2.9.0+
+
+The parquet-testing dataset currently only contains files using the deprecated LZ4 codec. 
+Test files using LZ4_RAW are not yet available in the public dataset.
 
 ### Multi-part GZIP
 This file uses concatenated GZIP members which requires special handling:
