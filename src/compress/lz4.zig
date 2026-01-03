@@ -26,13 +26,6 @@ pub const Decompress = struct {
             remaining: usize,
             match_len_short: u8,
         },
-        read_offset: struct {
-            match_len_short: u8,
-        },
-        read_match_len: struct {
-            offset: usize,
-            match_len_short: u8,
-        },
         match: struct {
             offset: usize,
             len: usize,
@@ -105,16 +98,38 @@ pub const Decompress = struct {
             },
             .literal => |*lit| {
                 if (lit.remaining == 0) {
-                    // Done with literals
-                    if (lit.match_len_short == 0) {
-                        // Literal-only block (end of block marker)
-                        d.state = .token;
-                    } else {
-                        // Read the offset for the match
-                        d.state = .{ .read_offset = .{
-                            .match_len_short = lit.match_len_short,
-                        } };
+                    // Done with literals. Check if there's more data for the match.
+                    // The last sequence in a block is literal-only (no match),
+                    // which we detect by reaching end of input.
+                    const next_byte = d.input.takeByte() catch |err| {
+                        if (err == error.EndOfStream) {
+                            // End of input after literals - this was the last sequence
+                            d.state = .eof;
+                        }
+                        return err;
+                    };
+
+                    // We have more data - this byte is the low byte of the offset.
+                    // Read the high byte of offset.
+                    const offset_high = try d.input.takeByte();
+                    const offset: usize = @as(usize, next_byte) + @as(usize, offset_high) * 256;
+
+                    if (offset == 0) {
+                        return error.ReadFailed;
                     }
+
+                    // Match length is match_len_short + 4 (minimum match is 4)
+                    var match_len: usize = lit.match_len_short + 4;
+
+                    // Read match length continuation bytes if match_len_short == 15
+                    if (lit.match_len_short == 15) {
+                        match_len = try readContinuationBytes(d.input, match_len);
+                    }
+
+                    d.state = .{ .match = .{
+                        .offset = offset,
+                        .len = match_len,
+                    } };
                     continue :read d.state;
                 }
 
@@ -124,40 +139,6 @@ pub const Decompress = struct {
                 lit.remaining -= out.len;
                 w.advance(out.len);
                 return out.len;
-            },
-            .read_offset => |*ro| {
-                const offset = try d.input.takeInt(u16, .little);
-                if (offset == 0) {
-                    return error.ReadFailed;
-                }
-
-                const match_len_short = ro.match_len_short;
-
-                // Now read match length continuation (if needed)
-                if (match_len_short == 15) {
-                    d.state = .{ .read_match_len = .{
-                        .offset = offset,
-                        .match_len_short = match_len_short,
-                    } };
-                    continue :read d.state;
-                }
-
-                const match_len = match_len_short + 4;
-                d.state = .{ .match = .{
-                    .offset = offset,
-                    .len = match_len,
-                } };
-                continue :read d.state;
-            },
-            .read_match_len => |*rml| {
-                // Read match length continuation bytes (minimum match is 4 bytes)
-                const match_len = try readContinuationBytes(d.input, rml.match_len_short + 4);
-
-                d.state = .{ .match = .{
-                    .offset = rml.offset,
-                    .len = match_len,
-                } };
-                continue :read d.state;
             },
             .match => |*match_data| {
                 if (match_data.len == 0) {
@@ -242,8 +223,10 @@ test "match with 255+ length continuation" {
     try expectDecoded(input, expected[0..]);
 }
 
-test "multiple blocks" {
-    try expectDecoded("\x10A\x10B", "AB");
+test "literal-only block" {
+    // A block with only literals (no matches) - last sequence doesn't need offset
+    // 0x20 = lit_len=2, match_len_short=0, followed by 2 literal bytes "AB"
+    try expectDecoded("\x20AB", "AB");
 }
 
 test "match copying backwards in buffer" {
