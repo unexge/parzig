@@ -24,6 +24,11 @@ Use Jujutsu (`jj`) for version control.
 - Check current diff: `jj diff -f main`
 - Commit changes: `jj commit -m "Your commit message"`
 
+## Code style
+- Look out for potential memory leaks. Ensure to use `errdefer` to free allocated memory in an error condition.
+- Make sure to look out for double-free errors, and again use `errdefer` when needed to clean up resources.
+- Use arena allocator to scope allocations, for example in the row group reader, allocate all data page in an arena and free all together.
+
 ## Addressing PR feedback
 Each change you make will go through a code review process on GitHub. To address feedback, you can run: 
 ```bash

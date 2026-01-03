@@ -19,6 +19,7 @@ pub const Decompress = struct {
 
     input: *Reader,
     reader: Reader,
+    total_written: usize,
 
     state: union(enum) {
         token,
@@ -46,6 +47,7 @@ pub const Decompress = struct {
                 .end = 0,
             },
             .state = .token,
+            .total_written = 0,
         };
     }
 
@@ -138,6 +140,7 @@ pub const Decompress = struct {
 
                 lit.remaining -= out.len;
                 w.advance(out.len);
+                d.total_written += out.len;
                 return out.len;
             },
             .match => |*match_data| {
@@ -146,33 +149,191 @@ pub const Decompress = struct {
                     continue :read d.state;
                 }
 
-                if (match_data.offset > w.end) {
+                // Match offset must not exceed the window size or the amount of data written,
+                // whichever is smaller
+                const max_offset = @min(d.total_written, window_len);
+                if (match_data.offset > max_offset) {
                     return error.ReadFailed;
                 }
 
                 const n = @min(match_data.len, remaining);
-                const src_start = w.end - match_data.offset;
+                // Use modulo to handle circular buffer wraparound for large files
+                // When w.end < match_data.offset (buffer wrapped), we need to add window_len first
+                const src_start = if (w.end >= match_data.offset)
+                    (w.end - match_data.offset) % window_len
+                else
+                    (w.end + window_len - match_data.offset) % window_len;
                 const dst = try w.writableSliceGreedyPreserve(Decompress.window_len, n);
 
                 if (match_data.offset >= n) {
                     // Non-overlapping match: source and destination do not overlap, so we can
-                    // copy the bytes directly without modulo.
-                    const src = w.buffer[src_start .. src_start + n];
-                    @memcpy(dst[0..n], src);
+                    // copy the bytes directly. Handle buffer wraparound if needed.
+                    if (src_start + n <= window_len) {
+                        // No wraparound
+                        const src = w.buffer[src_start .. src_start + n];
+                        @memcpy(dst[0..n], src);
+                    } else {
+                        // Wraparound case: copy in two parts
+                        const first_part_len = window_len - src_start;
+                        @memcpy(dst[0..first_part_len], w.buffer[src_start..window_len]);
+                        @memcpy(dst[first_part_len..n], w.buffer[0 .. n - first_part_len]);
+                    }
                 } else {
                     // Overlapping match: copy byte-by-byte using modulo to repeat the source
                     // sequence as needed.
                     for (0..n) |i| {
-                        const src_idx = src_start + (i % match_data.offset);
+                        const src_idx = (src_start + (i % match_data.offset)) % window_len;
                         dst[i] = w.buffer[src_idx];
                     }
                 }
 
                 match_data.len -= n;
                 w.advance(n);
+                d.total_written += n;
 
                 return n;
             },
+        }
+    }
+};
+
+/// LZ4 decompressor for Hadoop/Parquet deprecated LZ4 codec.
+///
+/// The Hadoop LZ4 format has a special framing structure:
+/// - 4 bytes: Total uncompressed size (big-endian)
+/// - For each block:
+///   - 4 bytes: Compressed block size (big-endian)
+///   - N bytes: LZ4-compressed block data
+///
+/// This decompressor provides a streaming API that decompresses blocks on-demand.
+pub const DecompressHadoop = struct {
+    /// Maximum allowed size for a compressed block (128 MB)
+    /// This prevents malicious files from causing excessive memory allocation
+    const max_compressed_block_size: u32 = 128 * 1024 * 1024;
+
+    /// Maximum allowed total uncompressed size (256 MB)
+    /// This prevents malicious files from causing excessive memory allocation
+    const max_total_uncompressed_size: u32 = 256 * 1024 * 1024;
+
+    input: *Reader,
+    reader: Reader,
+
+    total_uncompressed: u32,
+    decompressed_so_far: usize,
+
+    // Current block state
+    current_block: ?struct {
+        decompress: Decompress,
+        compressed_data: []u8,
+        decompress_buffer: []u8,
+    },
+
+    allocator: std.mem.Allocator,
+
+    pub fn init(input: *Reader, buffer: []u8, allocator: std.mem.Allocator) !DecompressHadoop {
+        std.debug.assert(buffer.len >= Decompress.window_len);
+
+        // Read total uncompressed size (big-endian)
+        const total_uncompressed = try input.takeInt(u32, .big);
+
+        // Validate total uncompressed size to prevent excessive memory allocation
+        if (total_uncompressed > max_total_uncompressed_size) {
+            return error.ReadFailed;
+        }
+
+        return .{
+            .input = input,
+            .reader = .{
+                .vtable = &.{
+                    .stream = DecompressHadoop.stream,
+                },
+                .buffer = buffer,
+                .seek = 0,
+                .end = 0,
+            },
+            .total_uncompressed = total_uncompressed,
+            .decompressed_so_far = 0,
+            .current_block = null,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *DecompressHadoop) void {
+        if (self.current_block) |*block| {
+            self.allocator.free(block.compressed_data);
+            self.allocator.free(block.decompress_buffer);
+            self.current_block = null;
+        }
+    }
+
+    fn stream(r: *Reader, w: *Writer, limit: Limit) Reader.StreamError!usize {
+        const d: *DecompressHadoop = @fieldParentPtr("reader", r);
+
+        // Use a loop instead of recursion to avoid potential stack overflow
+        // with files containing many small blocks
+        while (true) {
+            // Check if we've decompressed everything
+            if (d.decompressed_so_far >= d.total_uncompressed) {
+                // Free current block buffers before returning to prevent memory leak
+                if (d.current_block) |*block| {
+                    d.allocator.free(block.compressed_data);
+                    d.allocator.free(block.decompress_buffer);
+                    d.current_block = null;
+                }
+                return error.EndOfStream;
+            }
+
+            // If no current block, read the next one
+            if (d.current_block == null) {
+                // Read compressed block size (big-endian)
+                const compressed_size = try d.input.takeInt(u32, .big);
+
+                // Validate compressed size to prevent excessive memory allocation
+                if (compressed_size > max_compressed_block_size) {
+                    return error.ReadFailed;
+                }
+
+                // Allocate buffers for this block
+                // Note: We manually free these buffers despite using an arena allocator
+                // to reduce peak memory usage when processing large data pages
+                const compressed_data = d.allocator.alloc(u8, compressed_size) catch return error.ReadFailed;
+                errdefer d.allocator.free(compressed_data);
+
+                const decompress_buffer = d.allocator.alloc(u8, Decompress.window_len) catch return error.ReadFailed;
+                errdefer d.allocator.free(decompress_buffer);
+
+                // Read compressed block data
+                try d.input.readSliceAll(compressed_data);
+
+                // Create a fixed reader over the compressed data
+                var block_reader: Reader = .fixed(compressed_data);
+
+                // Initialize decompressor for this block
+                const decompress = Decompress.init(&block_reader, decompress_buffer);
+
+                d.current_block = .{
+                    .decompress = decompress,
+                    .compressed_data = compressed_data,
+                    .decompress_buffer = decompress_buffer,
+                };
+            }
+
+            // Stream from current block
+            const n = d.current_block.?.decompress.reader.stream(w, limit) catch |err| {
+                // Always free current block buffers on error to prevent memory leaks
+                d.allocator.free(d.current_block.?.compressed_data);
+                d.allocator.free(d.current_block.?.decompress_buffer);
+                d.current_block = null;
+
+                // If block finished and more data expected, continue to next block
+                if (err == error.EndOfStream and d.decompressed_so_far < d.total_uncompressed) {
+                    continue;
+                }
+                return err;
+            };
+
+            d.decompressed_so_far += n;
+            return n;
         }
     }
 };
