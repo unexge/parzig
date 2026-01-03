@@ -992,7 +992,7 @@ test "fixed length decimal" {
     var rg = file.rowGroup(0);
     const values = try rg.readColumn([11]u8, 0);
 
-    // Expected values are 1.00 to 24.00 as fixed-length decimals (11 bytes, little-endian)
+    // Expected values are 1.00 to 24.00 as fixed-length decimals (11 bytes, big-endian)
     // For decimal128(25,2), the values are stored as big-endian integers
     const expected = [_][11]u8{
         [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 },     // 1.00
