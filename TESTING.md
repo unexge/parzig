@@ -28,7 +28,7 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `delta_encoding_optional_column.parquet`         | ✅     |                           |
 | `delta_encoding_required_column.parquet`         | ✅     |                           |
 | `delta_length_byte_array.parquet`                | ✅     |                           |
-| `dict-page-offset-zero.parquet`                  | 🚧     | Non-standard metadata     |
+| `dict-page-offset-zero.parquet`                  | 🚧     | Thrift parsing error      |
 | `fixed_length_byte_array.parquet`                | 🚧     | Malformed file            |
 | `fixed_length_decimal.parquet`                   | ✅     |                           |
 | `fixed_length_decimal_legacy.parquet`            | ✅     |                           |
@@ -72,8 +72,16 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 The failing tests (🚧) can be grouped into the following categories:
 
 ### Files with Special Issues
-- `dict-page-offset-zero.parquet` - Non-standard Thrift metadata that causes parsing errors
-- `fixed_length_byte_array.parquet` - Malformed file (fails in both Polars and PyArrow with "Unexpected end of stream")
+
+#### `dict-page-offset-zero.parquet`
+- **parzig**: Thrift metadata parsing error (UnexpectedList in compact protocol)
+- **Pandas/PyArrow**: Can read successfully (39 rows, all values are 1552)
+- **Status**: Issue is in parzig's Thrift decoder, not the file itself
+
+#### `fixed_length_byte_array.parquet`
+- **parzig**: Unsupported fixed-length size (11 bytes)
+- **Pandas/PyArrow**: Cannot read (OSError: "Unexpected end of stream")
+- **Status**: Malformed file or unsupported edge case
 
 ### Repetition Levels
 These files use nested schemas (LIST, MAP, STRUCT) that require repetition level support to properly reconstruct the nested data:
