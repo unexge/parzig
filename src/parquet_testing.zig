@@ -1023,3 +1023,50 @@ test "fixed length decimal" {
 
     try testing.expectEqualSlices([11]u8, &expected, values);
 }
+
+test "byte stream split extended gzip" {
+    var reader_buf: [8192]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/byte_stream_split_extended.gzip.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(200, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    // Test plain encoded int32 column (column 6)
+    const int32_plain = try rg.readColumn(i32, 6);
+    try testing.expectEqual(@as(usize, 200), int32_plain.len);
+
+    // Verify first 5 values
+    try testing.expectEqualSlices(i32, &[_]i32{ 24191, 41157, 7403, 79368, 64983 }, int32_plain[0..5]);
+
+    // Test plain encoded int64 column (column 8)
+    const int64_plain = try rg.readColumn(i64, 8);
+    try testing.expectEqual(@as(usize, 200), int64_plain.len);
+
+    // Verify first 5 values
+    try testing.expectEqualSlices(i64, &[_]i64{ 293650000000, 41079000000, 51248000000, 246066000000, 572141000000 }, int64_plain[0..5]);
+
+    // Test plain encoded float column (column 2)
+    const float_plain = try rg.readColumn(f32, 2);
+    try testing.expectEqual(@as(usize, 200), float_plain.len);
+
+    // Verify first value is approximately correct
+    try testing.expectApproxEqAbs(@as(f32, 10.337575), float_plain[0], 0.001);
+
+    // Test plain encoded fixed-length byte array column (5 bytes, column 10)
+    const flba5_plain = try rg.readColumn([5]u8, 10);
+    try testing.expectEqual(@as(usize, 200), flba5_plain.len);
+
+    // Verify first 5 values (raw bytes)
+    const expected_flba5 = [_][5]u8{
+        [_]u8{ 48, 51, 55, 57, 53 },  // "03795"
+        [_]u8{ 48, 48, 51, 54, 51 },  // "00363"
+        [_]u8{ 48, 49, 48, 51, 56 },  // "01038"
+        [_]u8{ 49, 49, 57, 49, 52 },  // "11914"
+        [_]u8{ 48, 51, 49, 50, 53 },  // "03125"
+    };
+    try testing.expectEqualSlices([5]u8, &expected_flba5, flba5_plain[0..5]);
+}
