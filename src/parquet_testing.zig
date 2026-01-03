@@ -935,3 +935,19 @@ test "repeated primitive no list" {
     try testing.expectEqual(1, file.metadata.row_groups.len);
     try testing.expectEqual(4, file.metadata.num_rows);
 }
+
+test "lz4 raw compressed" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/lz4_raw_compressed.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(4, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    try testing.expectEqualSlices(i64, &[_]i64{ 1593604800, 1593604800, 1593604801, 1593604801 }, try rg.readColumn(i64, 0));
+    try testing.expectEqualDeep(&[_][]const u8{ "abc", "def", "abc", "def" }, try rg.readColumn([]const u8, 1));
+    try testing.expectEqualSlices(f64, &[_]f64{ 42.0, 7.7, 42.125, 7.7 }, try rg.readColumn(f64, 2));
+}
