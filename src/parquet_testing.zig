@@ -951,3 +951,75 @@ test "lz4 raw compressed" {
     try testing.expectEqualDeep(&[_][]const u8{ "abc", "def", "abc", "def" }, try rg.readColumn([]const u8, 1));
     try testing.expectEqualSlices(f64, &[_]f64{ 42.0, 7.7, 42.125, 7.7 }, try rg.readColumn(f64, 2));
 }
+
+test "data index bloom encoding stats" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/data_index_bloom_encoding_stats.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(14, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    try testing.expectEqualDeep(&[_][]const u8{ "Hello", "This is", "a", "test", "How", "are you", "doing ", "today", "the quick", "brown fox", "jumps", "over", "the lazy", "dog" }, try rg.readColumn([]const u8, 0));
+}
+
+test "data index bloom encoding with length" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/data_index_bloom_encoding_with_length.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(14, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    try testing.expectEqualDeep(&[_][]const u8{ "Hello", "This is", "a", "test", "How", "are you", "doing ", "today", "the quick", "brown fox", "jumps", "over", "the lazy", "dog" }, try rg.readColumn([]const u8, 0));
+}
+
+test "fixed length decimal" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/fixed_length_decimal.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(24, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    const values = try rg.readColumn([11]u8, 0);
+
+    // Expected values are 1.00 to 24.00 as fixed-length decimals (11 bytes, little-endian)
+    // For decimal128(25,2), the values are stored as big-endian integers
+    const expected = [_][11]u8{
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 },     // 1.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 },     // 2.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 44 },      // 3.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 144 },     // 4.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 244 },     // 5.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 88 },      // 6.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 188 },     // 7.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 32 },      // 8.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 132 },     // 9.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 232 },     // 10.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 76 },      // 11.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 176 },     // 12.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 20 },      // 13.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 120 },     // 14.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 220 },     // 15.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 64 },      // 16.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 164 },     // 17.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 8 },       // 18.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 108 },     // 19.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 208 },     // 20.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 52 },      // 21.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 152 },     // 22.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 252 },     // 23.00
+        [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 96 },      // 24.00
+    };
+
+    try testing.expectEqualSlices([11]u8, &expected, values);
+}
