@@ -19,6 +19,7 @@ Also, make sure to create a new edit before making any change.
 Use Jujutsu (`jj`) for version control.
 - Check history: `jj log`
 - Create a new edit from the current working copy: `jj new`
+  - Do this only if the current edit is non-empty. Don't create empty commits.
 - Check current status: `jj status`
 - Check current diff: `jj diff -f main`
 - Commit changes: `jj commit -m "Your commit message"`
