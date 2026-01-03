@@ -34,8 +34,8 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `fixed_length_decimal_legacy.parquet`            | ✅     |                           |
 | `float16_nonzeros_and_nans.parquet`              | ✅     |                           |
 | `float16_zeros_and_nans.parquet`                 | ✅     |                           |
-| `hadoop_lz4_compressed.parquet`                  | 🚧     | LZ4 (Hadoop) compression  |
-| `hadoop_lz4_compressed_larger.parquet`           | 🚧     | LZ4 (Hadoop) compression  |
+| `hadoop_lz4_compressed.parquet`                  | ✅     |                           |
+| `hadoop_lz4_compressed_larger.parquet`           | 🚧     | LZ4 (Hadoop) large file   |
 | `incorrect_map_schema.parquet`                   | 🚧     | Non-standard MAP schema   |
 | `int32_decimal.parquet`                          | ✅     |                           |
 | `int32_with_null_pages.parquet`                  | ✅     |                           |
@@ -95,25 +95,24 @@ These files use nested schemas (LIST, MAP, STRUCT) that require repetition level
 - `repeated_no_annotation.parquet` - REPEATED fields without LIST annotation
 
 ### Compression
-These files use compression codecs that are not yet implemented:
+These files use compression codecs that have partial or no support:
 
-**LZ4 (deprecated Hadoop format):**
-- `hadoop_lz4_compressed.parquet`
-- `hadoop_lz4_compressed_larger.parquet`
-
-**LZ4 (raw format):**
-- `lz4_raw_compressed_larger.parquet`
-
-**LZ4 (non-Hadoop/deprecated format):**
-- `non_hadoop_lz4_compressed.parquet`
+**LZ4:**
+✅ Basic support implemented for Hadoop LZ4 format (codec value 5) and raw LZ4 blocks (codec value 7)
+- ✅ `hadoop_lz4_compressed.parquet` - Working
+- 🚧 `hadoop_lz4_compressed_larger.parquet` - Large file issue (EndOfStream during decompression)
+- 🚧 `lz4_raw_compressed_larger.parquet` - File format quirk (invalid match offset)
+- 🚧 `non_hadoop_lz4_compressed.parquet` - Syscall error
 
 **BROTLI:**
 - `large_string_map.brotli.parquet`
 
-**Note on LZ4 vs LZ4_RAW:**
+**Note on LZ4 Compression:**
 The Parquet format specifies two different LZ4 compression codecs:
-- **LZ4** (codec value 5): Deprecated codec with Hadoop framing (undocumented extra bytes)
-- **LZ4_RAW** (codec value 7): Modern codec using pure LZ4 block format, specified in Parquet format v2.9.0+
+- **LZ4** (codec value 5): Deprecated codec with Hadoop framing (4-byte size prefixes)
+- **LZ4_RAW** (codec value 7): Modern codec using pure LZ4 block format
+
+parzig supports both formats with circular buffer handling for large decompressed data (>64KB sliding window).
 
 ### Multi-part GZIP
 This file uses concatenated GZIP members which requires special handling:

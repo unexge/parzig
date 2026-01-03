@@ -263,6 +263,12 @@ fn decoderForPage(arena: std.mem.Allocator, inner_reader: *Reader, codec: parque
             });
             break :blk &decompress.reader;
         },
+        .LZ4 => blk: {
+            const buf = try arena.alloc(u8, compress.lz4.Decompress.window_len);
+            const decompress = try arena.create(compress.lz4.DecompressHadoop);
+            decompress.* = try compress.lz4.DecompressHadoop.init(inner_reader, buf, arena);
+            break :blk &decompress.reader;
+        },
         .LZ4_RAW => blk: {
             const buf = try arena.alloc(u8, compress.lz4.Decompress.window_len);
             const decompress = try arena.create(compress.lz4.Decompress);
