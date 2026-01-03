@@ -14,11 +14,11 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `binary.parquet`                                 | ✅     |                           |
 | `byte_array_decimal.parquet`                     | ✅     |                           |
 | `byte_stream_split.zstd.parquet`                 | ✅     |                           |
-| `byte_stream_split_extended.gzip.parquet`        | 🚧     | Needs data assertions     |
+| `byte_stream_split_extended.gzip.parquet`        | ✅     |                           |
 | `column_chunk_key_value_metadata.parquet`        | ✅     |                           |
 | `concatenated_gzip_members.parquet`              | 🚧     | Multi-part GZIP           |
-| `data_index_bloom_encoding_stats.parquet`        | 🚧     | Needs data assertions     |
-| `data_index_bloom_encoding_with_length.parquet`  | 🚧     | Needs data assertions     |
+| `data_index_bloom_encoding_stats.parquet`        | ✅     |                           |
+| `data_index_bloom_encoding_with_length.parquet`  | ✅     |                           |
 | `datapage_v1-corrupt-checksum.parquet`           | ✅     |                           |
 | `datapage_v1-snappy-compressed-checksum.parquet` | ✅     |                           |
 | `datapage_v1-uncompressed-checksum.parquet`      | ✅     |                           |
@@ -28,9 +28,9 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `delta_encoding_optional_column.parquet`         | ✅     |                           |
 | `delta_encoding_required_column.parquet`         | ✅     |                           |
 | `delta_length_byte_array.parquet`                | ✅     |                           |
-| `dict-page-offset-zero.parquet`                  | 🚧     | Needs data assertions     |
-| `fixed_length_byte_array.parquet`                | 🚧     | Needs data assertions     |
-| `fixed_length_decimal.parquet`                   | 🚧     | Needs data assertions     |
+| `dict-page-offset-zero.parquet`                  | 🚧     | Thrift parsing error      |
+| `fixed_length_byte_array.parquet`                | 🚧     | Malformed file            |
+| `fixed_length_decimal.parquet`                   | ✅     |                           |
 | `fixed_length_decimal_legacy.parquet`            | ✅     |                           |
 | `float16_nonzeros_and_nans.parquet`              | ✅     |                           |
 | `float16_zeros_and_nans.parquet`                 | ✅     |                           |
@@ -71,14 +71,17 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 
 The failing tests (🚧) can be grouped into the following categories:
 
-### Needs Data Assertions
-These files can be read successfully, but the tests need to be updated with full data assertions:
-- `byte_stream_split_extended.gzip.parquet`
-- `data_index_bloom_encoding_stats.parquet`
-- `data_index_bloom_encoding_with_length.parquet`
-- `dict-page-offset-zero.parquet`
-- `fixed_length_byte_array.parquet`
-- `fixed_length_decimal.parquet`
+### Files with Special Issues
+
+#### `dict-page-offset-zero.parquet`
+- **parzig**: Thrift metadata parsing error (UnexpectedList in compact protocol)
+- **Pandas/PyArrow**: Can read successfully (39 rows, all values are 1552)
+- **Status**: Issue is in parzig's Thrift decoder, not the file itself
+
+#### `fixed_length_byte_array.parquet`
+- **parzig**: Unsupported fixed-length size (11 bytes)
+- **Pandas/PyArrow**: Cannot read (OSError: "Unexpected end of stream")
+- **Status**: Malformed file or unsupported edge case
 
 ### Repetition Levels
 These files use nested schemas (LIST, MAP, STRUCT) that require repetition level support to properly reconstruct the nested data:
