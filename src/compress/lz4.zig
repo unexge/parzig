@@ -207,6 +207,14 @@ pub const Decompress = struct {
 ///
 /// This decompressor provides a streaming API that decompresses blocks on-demand.
 pub const DecompressHadoop = struct {
+    /// Maximum allowed size for a compressed block (128 MB)
+    /// This prevents malicious files from causing excessive memory allocation
+    const max_compressed_block_size: u32 = 128 * 1024 * 1024;
+
+    /// Maximum allowed total uncompressed size (256 MB)
+    /// This prevents malicious files from causing excessive memory allocation
+    const max_total_uncompressed_size: u32 = 256 * 1024 * 1024;
+
     input: *Reader,
     reader: Reader,
 
@@ -227,6 +235,11 @@ pub const DecompressHadoop = struct {
 
         // Read total uncompressed size (big-endian)
         const total_uncompressed = try input.takeInt(u32, .big);
+
+        // Validate total uncompressed size to prevent excessive memory allocation
+        if (total_uncompressed > max_total_uncompressed_size) {
+            return error.ReadFailed;
+        }
 
         return .{
             .input = input,
@@ -261,6 +274,12 @@ pub const DecompressHadoop = struct {
         while (true) {
             // Check if we've decompressed everything
             if (d.decompressed_so_far >= d.total_uncompressed) {
+                // Free current block buffers before returning to prevent memory leak
+                if (d.current_block) |*block| {
+                    d.allocator.free(block.compressed_data);
+                    d.allocator.free(block.decompress_buffer);
+                    d.current_block = null;
+                }
                 return error.EndOfStream;
             }
 
@@ -268,6 +287,11 @@ pub const DecompressHadoop = struct {
             if (d.current_block == null) {
                 // Read compressed block size (big-endian)
                 const compressed_size = try d.input.takeInt(u32, .big);
+
+                // Validate compressed size to prevent excessive memory allocation
+                if (compressed_size > max_compressed_block_size) {
+                    return error.ReadFailed;
+                }
 
                 // Allocate buffers for this block
                 // Note: We manually free these buffers despite using an arena allocator

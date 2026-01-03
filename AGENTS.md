@@ -26,7 +26,7 @@ Use Jujutsu (`jj`) for version control.
 
 ## Code style
 - Look out for potential memory leaks. Ensure to use `errdefer` to free allocated memory in an error condition.
-- Make sure to be look out for double-free errors, and again use `errdefer` when needed to clean up resources.
+- Make sure to look out for double-free errors, and again use `errdefer` when needed to clean up resources.
 - Use arena allocator to scope allocations, for example in the row group reader, allocate all data page in an arena and free all together.
 
 ## Addressing PR feedback
