@@ -249,63 +249,68 @@ pub const DecompressHadoop = struct {
         if (self.current_block) |*block| {
             self.allocator.free(block.compressed_data);
             self.allocator.free(block.decompress_buffer);
+            self.current_block = null;
         }
     }
 
     fn stream(r: *Reader, w: *Writer, limit: Limit) Reader.StreamError!usize {
         const d: *DecompressHadoop = @fieldParentPtr("reader", r);
 
-        // Check if we've decompressed everything
-        if (d.decompressed_so_far >= d.total_uncompressed) {
-            return error.EndOfStream;
-        }
+        // Use a loop instead of recursion to avoid potential stack overflow
+        // with files containing many small blocks
+        while (true) {
+            // Check if we've decompressed everything
+            if (d.decompressed_so_far >= d.total_uncompressed) {
+                return error.EndOfStream;
+            }
 
-        // If no current block, read the next one
-        if (d.current_block == null) {
-            // Read compressed block size (big-endian)
-            const compressed_size = try d.input.takeInt(u32, .big);
+            // If no current block, read the next one
+            if (d.current_block == null) {
+                // Read compressed block size (big-endian)
+                const compressed_size = try d.input.takeInt(u32, .big);
 
-            // Allocate buffers for this block
-            const compressed_data = d.allocator.alloc(u8, compressed_size) catch return error.ReadFailed;
-            errdefer d.allocator.free(compressed_data);
+                // Allocate buffers for this block
+                // Note: We manually free these buffers despite using an arena allocator
+                // to reduce peak memory usage when processing large data pages
+                const compressed_data = d.allocator.alloc(u8, compressed_size) catch return error.ReadFailed;
+                errdefer d.allocator.free(compressed_data);
 
-            const decompress_buffer = d.allocator.alloc(u8, Decompress.window_len) catch return error.ReadFailed;
-            errdefer d.allocator.free(decompress_buffer);
+                const decompress_buffer = d.allocator.alloc(u8, Decompress.window_len) catch return error.ReadFailed;
+                errdefer d.allocator.free(decompress_buffer);
 
-            // Read compressed block data
-            try d.input.readSliceAll(compressed_data);
+                // Read compressed block data
+                try d.input.readSliceAll(compressed_data);
 
-            // Create a fixed reader over the compressed data
-            var block_reader: Reader = .fixed(compressed_data);
+                // Create a fixed reader over the compressed data
+                var block_reader: Reader = .fixed(compressed_data);
 
-            // Initialize decompressor for this block
-            const decompress = Decompress.init(&block_reader, decompress_buffer);
+                // Initialize decompressor for this block
+                const decompress = Decompress.init(&block_reader, decompress_buffer);
 
-            d.current_block = .{
-                .decompress = decompress,
-                .compressed_data = compressed_data,
-                .decompress_buffer = decompress_buffer,
-            };
-        }
+                d.current_block = .{
+                    .decompress = decompress,
+                    .compressed_data = compressed_data,
+                    .decompress_buffer = decompress_buffer,
+                };
+            }
 
-        // Stream from current block
-        const n = d.current_block.?.decompress.reader.stream(w, limit) catch |err| {
-            if (err == error.EndOfStream) {
-                // Current block finished, clean it up
+            // Stream from current block
+            const n = d.current_block.?.decompress.reader.stream(w, limit) catch |err| {
+                // Always free current block buffers on error to prevent memory leaks
                 d.allocator.free(d.current_block.?.compressed_data);
                 d.allocator.free(d.current_block.?.decompress_buffer);
                 d.current_block = null;
 
-                // Try to read next block if we haven't finished
-                if (d.decompressed_so_far < d.total_uncompressed) {
-                    return stream(r, w, limit);
+                // If block finished and more data expected, continue to next block
+                if (err == error.EndOfStream and d.decompressed_so_far < d.total_uncompressed) {
+                    continue;
                 }
-            }
-            return err;
-        };
+                return err;
+            };
 
-        d.decompressed_so_far += n;
-        return n;
+            d.decompressed_so_far += n;
+            return n;
+        }
     }
 };
 
