@@ -41,25 +41,25 @@ parzig includes parquet-testing as a submodule in [`./testdata/parquet-testing`]
 | `int32_with_null_pages.parquet`                  | ✅     |                           |
 | `int64_decimal.parquet`                          | ✅     |                           |
 | `large_string_map.brotli.parquet`                | 🚧     | BROTLI compression        |
-| `list_columns.parquet`                           | 🚧     | Repetition levels         |
+| `list_columns.parquet`                           | ✅     |                           |
 | `lz4_raw_compressed.parquet`                     | ✅     |                           |
 | `lz4_raw_compressed_larger.parquet`              | 🚧     | LZ4 (raw) compression     |
-| `map_no_value.parquet`                           | 🚧     | Repetition levels         |
+| `map_no_value.parquet`                           | ✅     |                           |
 | `nan_in_stats.parquet`                           | ✅     |                           |
 | `nation.dict-malformed.parquet`                  | ✅     |                           |
-| `nested_lists.snappy.parquet`                    | 🚧     | Repetition levels         |
-| `nested_maps.snappy.parquet`                     | 🚧     | Repetition levels         |
-| `nested_structs.rust.parquet`                    | 🚧     | Repetition levels         |
+| `nested_lists.snappy.parquet`                    | 🚧     | Deeply nested lists       |
+| `nested_maps.snappy.parquet`                     | 🚧     | Deeply nested maps        |
+| `nested_structs.rust.parquet`                    | ✅     |                           |
 | `non_hadoop_lz4_compressed.parquet`              | 🚧     | LZ4 compression           |
-| `nonnullable.impala.parquet`                     | 🚧     | Repetition levels         |
+| `nonnullable.impala.parquet`                     | ✅     |                           |
 | `null_list.parquet`                              | ✅     |                           |
-| `nullable.impala.parquet`                        | 🚧     | Repetition levels         |
+| `nullable.impala.parquet`                        | 🚧     | Deeply nested lists       |
 | `nulls.snappy.parquet`                           | ✅     |                           |
 | `old_list_structure.parquet`                     | ✅     |                           |
 | `overflow_i16_page_cnt.parquet`                  | ✅     |                           |
 | `page_v2_empty_compressed.parquet`               | ✅     |                           |
 | `plain-dict-uncompressed-checksum.parquet`       | ✅     |                           |
-| `repeated_no_annotation.parquet`                 | 🚧     | Repetition levels         |
+| `repeated_no_annotation.parquet`                 | ✅     |                           |
 | `repeated_primitive_no_list.parquet`             | ✅     |                           |
 | `rle-dict-snappy-checksum.parquet`               | ✅     |                           |
 | `rle-dict-uncompressed-corrupt-checksum.parquet` | ✅     |                           |
@@ -83,16 +83,22 @@ The failing tests (🚧) can be grouped into the following categories:
 - **Pandas/PyArrow**: Cannot read (OSError: "Unexpected end of stream")
 - **Status**: Malformed file or unsupported edge case
 
-### Repetition Levels
-These files use nested schemas (LIST, MAP, STRUCT) that require repetition level support to properly reconstruct the nested data:
-- `list_columns.parquet` - LIST columns
-- `map_no_value.parquet` - MAP with null values
-- `nested_lists.snappy.parquet` - Nested LIST columns
-- `nested_maps.snappy.parquet` - Nested MAP columns
-- `nested_structs.rust.parquet` - Nested STRUCT columns
-- `nonnullable.impala.parquet` - LIST and MAP columns
-- `nullable.impala.parquet` - LIST and MAP columns
-- `repeated_no_annotation.parquet` - REPEATED fields without LIST annotation
+### Deeply Nested Types
+parzig now has full support for basic nested types (LIST, MAP, STRUCT) with proper Dremel-based reconstruction using definition and repetition levels. However, some files with specific nested structures still have issues:
+- `nested_lists.snappy.parquet` - Triple-nested LIST columns (list<list<list<str>>>): file parses without crashing but returns all null values instead of actual data
+- `nested_maps.snappy.parquet` - MAP columns with nested MAP values (fails with empty encoded_values in RLE decoder)
+- `nullable.impala.parquet` - LIST of LIST columns (fails with empty encoded_values in RLE decoder)
+
+**Supported nested features:**
+- ✅ Basic LIST columns with nullable elements (`list_columns.parquet`)
+- ✅ MAP columns with key-value pairs (`map_no_value.parquet`)
+- ✅ STRUCT columns with multiple fields (`nested_structs.rust.parquet`)
+- ✅ REPEATED fields with and without LIST annotation (`repeated_no_annotation.parquet`, `nonnullable.impala.parquet`)
+- ✅ Definition and repetition level reconstruction
+
+**Known limitations:**
+- ❌ Multi-level nested LISTs (list<list<T>>): Files parse but return incorrect null values
+- ❌ Nested MAP values (map<K, map<K2, V2>>): RLE decoder fails with empty encoded_values
 
 ### Compression
 These files use compression codecs that have partial or no support:
