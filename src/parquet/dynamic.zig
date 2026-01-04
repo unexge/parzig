@@ -29,8 +29,8 @@ pub fn readColumn(file: *File, column: *parquet_schema.ColumnChunk) !Values {
         .DOUBLE => .{ .double = try readColumnComptime(?f64, file, column) },
         .BYTE_ARRAY => .{ .byte_array = try readColumnComptime(?[]u8, file, column) },
         .FIXED_LEN_BYTE_ARRAY => {
-            _, _, const schema = file.findSchemaElement(metadata.path_in_schema) orelse return error.MissingSchemaElement;
-            const type_length = schema.type_length orelse return error.MissingTypeLength;
+            const schema_info = file.findSchemaElement(metadata.path_in_schema) orelse return error.MissingSchemaElement;
+            const type_length = schema_info.elem.type_length orelse return error.MissingTypeLength;
 
             return switch (type_length) {
                 2 => .{ .fixed_len_byte_array_2 = try readColumnComptime(?[2]u8, file, column) },

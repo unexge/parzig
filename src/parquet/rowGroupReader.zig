@@ -9,6 +9,15 @@ const File = @import("./File.zig");
 
 const RowGroupReader = @This();
 
+/// Holds column data along with definition and repetition levels
+pub fn ColumnData(comptime T: type) type {
+    return struct {
+        values: []T,
+        def_levels: ?[]const u16,
+        rep_levels: ?[]const u16,
+    };
+}
+
 fn isAssignable(comptime T: type, parquet_type: parquet_schema.Type) bool {
     return switch (parquet_type) {
         .BOOLEAN => T == bool,
@@ -25,7 +34,16 @@ fn isAssignable(comptime T: type, parquet_type: parquet_schema.Type) bool {
     };
 }
 
+/// Calculate the bit width needed to encode a level value
+fn levelBitWidth(max_level: u8) u8 {
+    return std.math.log2_int_ceil(u8, max_level + 1);
+}
+
 pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnChunk) ![]T {
+    return (try readColumnWithLevels(T, file, column)).values;
+}
+
+pub fn readColumnWithLevels(comptime T: type, file: *File, column: *parquet_schema.ColumnChunk) !ColumnData(T) {
     const Inner = unwrapOptional(T);
 
     const metadata = column.meta_data orelse return error.MissingColumnMetadata;
@@ -34,12 +52,18 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
     }
 
     if (metadata.num_values == 0) {
-        return &[_]T{};
+        return ColumnData(T){
+            .values = &[_]T{},
+            .def_levels = null,
+            .rep_levels = null,
+        };
     }
 
     const arena = file.arena.allocator();
 
-    const max_definition_level, const max_repetition_level, _ = file.findSchemaElement(metadata.path_in_schema) orelse return error.UnknownField;
+    const schema_info = file.findSchemaElement(metadata.path_in_schema) orelse return error.UnknownField;
+    const max_definition_level = schema_info.max_definition_level;
+    const max_repetition_level = schema_info.max_repetition_level;
 
     const page_header_reader = protocol_compact.StructReader(parquet_schema.PageHeader);
 
@@ -51,12 +75,23 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
         dict_values = try readDictionaryPage(Inner, arena, dictionary_page_header, &file.file_reader.interface, metadata.codec);
     }
 
-    var read_values = try arena.alloc(T, @intCast(metadata.num_values));
+    const read_values = try arena.alloc(T, @intCast(metadata.num_values));
     var read_values_pos: usize = 0;
+
+    // Pre-allocate arrays for levels
+    var all_def_levels: ?[]u16 = null;
+    var all_rep_levels: ?[]u16 = null;
+    var read_levels_pos: usize = 0;
+    if (max_definition_level > 0) {
+        all_def_levels = try arena.alloc(u16, @intCast(metadata.num_values));
+    }
+    if (max_repetition_level > 0) {
+        all_rep_levels = try arena.alloc(u16, @intCast(metadata.num_values));
+    }
 
     try file.file_reader.seekTo(@intCast(metadata.data_page_offset));
 
-    while (metadata.num_values > read_values_pos) {
+    while (metadata.num_values > read_levels_pos) {
         const page_header = try page_header_reader.read(arena, &file.file_reader.interface);
         const page_end = file.file_reader.logicalPos() + @as(u64, @intCast(page_header.compressed_page_size));
         defer {
@@ -81,18 +116,17 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 const decoder = try decoderForPage(arena, &file.file_reader.interface, metadata.codec);
 
                 if (max_repetition_level > 0) {
-                    const values = try file.readLevelDataV1(decoder, data_page.repetition_level_encoding, max_repetition_level, num_values);
-                    defer arena.free(values);
+                    const rep_bit_width = levelBitWidth(max_repetition_level);
+                    try file.readLevelDataV1(decoder, data_page.repetition_level_encoding, rep_bit_width, all_rep_levels.?[read_levels_pos..][0..num_values]);
                 }
 
                 var def_values: []u16 = undefined;
                 if (max_definition_level > 0) {
-                    def_values = try file.readLevelDataV1(decoder, data_page.definition_level_encoding, max_definition_level, num_values);
+                    const def_bit_width = levelBitWidth(max_definition_level);
+                    def_values = all_def_levels.?[read_levels_pos..][0..num_values];
+                    try file.readLevelDataV1(decoder, data_page.definition_level_encoding, def_bit_width, def_values);
 
                     num_encoded_values = countNonNulls(def_values, max_definition_level);
-                }
-                defer {
-                    if (max_definition_level > 0) arena.free(def_values);
                 }
 
                 const encoded_values = switch (data_page.encoding) {
@@ -125,7 +159,14 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 };
 
                 try decodeValues(T, read_values[read_values_pos..], num_encoded_values, encoded_values, num_values, def_values, max_definition_level);
-                read_values_pos += num_values;
+                // For non-optional types (LIST columns), increment by num_encoded_values
+                // For optional types (flat columns with nulls), increment by num_values
+                if (@typeInfo(T) != .optional and num_values != num_encoded_values) {
+                    read_values_pos += num_encoded_values;
+                } else {
+                    read_values_pos += num_values;
+                }
+                read_levels_pos += num_values;
             },
             .DATA_PAGE_V2 => {
                 const data_page = page_header.data_page_header_v2.?;
@@ -136,8 +177,8 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 const reader = &file.file_reader.interface;
 
                 if (max_repetition_level > 0) {
-                    const values = try file.readLevelDataV2(reader, max_repetition_level, num_values, @intCast(data_page.repetition_levels_byte_length));
-                    defer arena.free(values);
+                    const rep_bit_width = levelBitWidth(max_repetition_level);
+                    try file.readLevelDataV2(reader, rep_bit_width, all_rep_levels.?[read_levels_pos..][0..num_values], @intCast(data_page.repetition_levels_byte_length));
                 } else if (data_page.repetition_levels_byte_length > 0) {
                     const pos = file.file_reader.logicalPos();
                     const length: u64 = @intCast(data_page.repetition_levels_byte_length);
@@ -148,12 +189,11 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 var def_values: []u16 = undefined;
                 const has_def_values = max_definition_level > 0 and data_page.definition_levels_byte_length > 0;
                 if (has_def_values) {
-                    def_values = try file.readLevelDataV2(reader, max_definition_level, num_values, @intCast(data_page.definition_levels_byte_length));
+                    const def_bit_width = levelBitWidth(max_definition_level);
+                    def_values = all_def_levels.?[read_levels_pos..][0..num_values];
+                    try file.readLevelDataV2(reader, def_bit_width, def_values, @intCast(data_page.definition_levels_byte_length));
 
                     std.debug.assert(num_encoded_values == countNonNulls(def_values, max_definition_level));
-                }
-                defer {
-                    if (has_def_values) arena.free(def_values);
                 }
 
                 const decoder = try decoderForPage(arena, reader, metadata.codec);
@@ -197,7 +237,14 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
                 }
 
                 try decodeValues(T, read_values[read_values_pos..], num_encoded_values, buf, num_values, def_values, max_definition_level);
-                read_values_pos += num_values;
+                // For non-optional types (LIST columns), increment by num_encoded_values
+                // For optional types (flat columns with nulls), increment by num_values
+                if (@typeInfo(T) != .optional and num_values != num_encoded_values) {
+                    read_values_pos += num_encoded_values;
+                } else {
+                    read_values_pos += num_values;
+                }
+                read_levels_pos += num_values;
             },
             else => {
                 std.debug.print("{any} is not supported\n", .{page_header.type});
@@ -206,7 +253,11 @@ pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnC
         }
     }
 
-    return read_values;
+    return ColumnData(T){
+        .values = read_values[0..read_values_pos],
+        .def_levels = all_def_levels,
+        .rep_levels = all_rep_levels,
+    };
 }
 
 inline fn decodeValues(
@@ -218,18 +269,24 @@ inline fn decodeValues(
     def_values: []u16,
     max_definition_level: u8,
 ) !void {
-    if (num_values == num_encoded_values) {
-        // No nulls
+    // For LIST columns (non-optional T), values are already extracted via definition levels.
+    // Just copy the non-null values in order.
+    if (@typeInfo(T) != .optional) {
         for (encoded_values, 0..) |v, i| {
             dest[i] = v;
         }
         return;
     }
 
-    if (@typeInfo(T) != .optional) {
-        return error.NullValuesWithoutOptionalType;
+    if (num_values == num_encoded_values) {
+        // No nulls, just copy
+        for (encoded_values, 0..) |v, i| {
+            dest[i] = v;
+        }
+        return;
     }
 
+    // Has nulls: decode with null placeholders
     var last_decoded_value: usize = 0;
     for (def_values, 0..) |v, i| {
         if (v < max_definition_level) {
@@ -309,7 +366,7 @@ fn countNonNulls(
     return count;
 }
 
-fn unwrapOptional(comptime T: type) type {
+pub fn unwrapOptional(comptime T: type) type {
     return switch (@typeInfo(T)) {
         .optional => |*o| o.child,
         else => T,

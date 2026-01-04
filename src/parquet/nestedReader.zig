@@ -1,0 +1,65 @@
+const parquet_schema = @import("../generated/parquet.zig");
+const File = @import("./File.zig");
+const rowGroupReader = @import("./rowGroupReader.zig");
+
+pub fn readList(
+    comptime T: type,
+    file: *File,
+    column: *parquet_schema.ColumnChunk,
+) ![][]const T {
+    const arena = file.arena.allocator();
+    const Inner = rowGroupReader.unwrapOptional(T);
+    const is_nullable = Inner != T;
+
+    const column_data = try rowGroupReader.readColumnWithLevels(Inner, file, column);
+
+    const metadata = column.meta_data orelse return error.MissingColumnMetadata;
+    const schema_info = file.findSchemaElement(metadata.path_in_schema) orelse return error.UnknownField;
+    const max_def_level = schema_info.max_definition_level;
+
+    if (schema_info.max_repetition_level == 0) {
+        return error.NotAListColumn;
+    }
+
+    const def_levels = column_data.def_levels orelse return error.MissingDefinitionLevels;
+    const rep_levels = column_data.rep_levels orelse return error.MissingRepetitionLevels;
+    const values = column_data.values;
+
+    var num_lists: usize = 0;
+    for (rep_levels) |rep_level| {
+        if (rep_level == 0) num_lists += 1;
+    }
+
+    const lists = try arena.alloc([]const T, num_lists);
+    var list_data = try arena.alloc(T, rep_levels.len);
+    var list_data_pos: usize = 0;
+    var list_idx: usize = 0;
+    var value_idx: usize = 0;
+    var list_start: usize = 0;
+
+    for (rep_levels, 0..) |rep_level, i| {
+        const def_level = def_levels[i];
+
+        if (rep_level == 0 and i > 0) {
+            lists[list_idx] = list_data[list_start..list_data_pos];
+            list_idx += 1;
+            list_start = list_data_pos;
+        }
+
+        if (def_level >= max_def_level - 1) {
+            if (def_level == max_def_level) {
+                list_data[list_data_pos] = values[value_idx];
+                value_idx += 1;
+            } else if (is_nullable) {
+                list_data[list_data_pos] = null;
+            }
+            list_data_pos += 1;
+        }
+    }
+
+    if (list_idx < num_lists) {
+        lists[list_idx] = list_data[list_start..list_data_pos];
+    }
+
+    return lists;
+}
