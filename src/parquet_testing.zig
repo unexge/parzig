@@ -2,6 +2,7 @@ const std = @import("std");
 const parzig = @import("parzig");
 
 const File = parzig.parquet.File;
+const nestedReader = parzig.parquet.nestedReader;
 const testing = std.testing;
 const io = testing.io;
 const Io = std.Io;
@@ -566,8 +567,14 @@ test "datapage v2 snappy compressed" {
     try testing.expectEqualSlices(i32, &[_]i32{ 1, 2, 3, 4, 5 }, try rg.readColumn(i32, 1));
     try testing.expectEqualSlices(f64, &[_]f64{ 2.0, 3.0, 4.0, 5.0, 2.0 }, try rg.readColumn(f64, 2));
     try testing.expectEqualSlices(bool, &[_]bool{ true, true, true, false, true }, try rg.readColumn(bool, 3));
-    // TODO: Need to unflatten the array once we handle repetition levels: [1, 2, 3], null, null, [1, 2, 3], [1, 2]
-    try testing.expectEqualSlices(?i32, &[_]?i32{ 1, 2, 3, null, null, 1, 2, 3, 1, 2 }, try rg.readColumn(?i32, 4));
+    // e: [[1, 2, 3], null, null, [1, 2, 3], [1, 2]]
+    const e_list = try rg.readListColumn(?i32, 4);
+    try testing.expectEqual(5, e_list.len);
+    try testing.expectEqualDeep(&[_]?i32{ 1, 2, 3 }, e_list[0]);
+    try testing.expectEqual(0, e_list[1].len); // null list represented as empty
+    try testing.expectEqual(0, e_list[2].len); // null list represented as empty
+    try testing.expectEqualDeep(&[_]?i32{ 1, 2, 3 }, e_list[3]);
+    try testing.expectEqualDeep(&[_]?i32{ 1, 2 }, e_list[4]);
 }
 
 test "int32 decimal" {
@@ -866,7 +873,34 @@ test "map no value" {
     try testing.expectEqual(1, file.metadata.row_groups.len);
     try testing.expectEqual(3, file.metadata.num_rows);
 
-    // TODO: Assert fields once we handle repetition levels
+    var rg = file.rowGroup(0);
+
+    // my_map: [{1: null, 2: null, 3: null}, {4: null, 5: null, 6: null}, {7: null, 8: null, 9: null}]
+    const my_map = try rg.readMapColumn(i32, ?i32, 0, 1);
+    try testing.expectEqual(3, my_map.len);
+    try testing.expectEqual(3, my_map[0].len);
+    try testing.expectEqualDeep(&[_]nestedReader.MapEntry(i32, ?i32){
+        .{ .key = 1, .value = null },
+        .{ .key = 2, .value = null },
+        .{ .key = 3, .value = null },
+    }, my_map[0]);
+    try testing.expectEqualDeep(&[_]nestedReader.MapEntry(i32, ?i32){
+        .{ .key = 4, .value = null },
+        .{ .key = 5, .value = null },
+        .{ .key = 6, .value = null },
+    }, my_map[1]);
+    try testing.expectEqualDeep(&[_]nestedReader.MapEntry(i32, ?i32){
+        .{ .key = 7, .value = null },
+        .{ .key = 8, .value = null },
+        .{ .key = 9, .value = null },
+    }, my_map[2]);
+
+    // my_list: [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    const my_list = try rg.readListColumn(i32, 3);
+    try testing.expectEqual(3, my_list.len);
+    try testing.expectEqualSlices(i32, &[_]i32{ 1, 2, 3 }, my_list[0]);
+    try testing.expectEqualSlices(i32, &[_]i32{ 4, 5, 6 }, my_list[1]);
+    try testing.expectEqualSlices(i32, &[_]i32{ 7, 8, 9 }, my_list[2]);
 }
 
 test "nation dict malformed" {
@@ -894,6 +928,28 @@ test "nested structs rust" {
 
     try testing.expectEqual(1, file.metadata.row_groups.len);
     try testing.expectEqual(1, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    // roll_num struct (columns 0-5): {min, max, mean, count, sum, variance}
+    const RollNum = struct {
+        min: i64,
+        max: i64,
+        mean: i64,
+        count: i64,
+        sum: i64,
+        variance: i64,
+    };
+    const roll_num = try rg.readStructColumn(RollNum, 0);
+    try testing.expectEqual(1, roll_num.len);
+    try testing.expectEqual(RollNum{
+        .min = 190406409000602,
+        .max = 190407175004000,
+        .mean = 190406671229999,
+        .count = 495,
+        .sum = 94251302258849568,
+        .variance = 0,
+    }, roll_num[0]);
 }
 
 test "non-nullable impala" {
@@ -904,6 +960,30 @@ test "non-nullable impala" {
 
     try testing.expectEqual(1, file.metadata.row_groups.len);
     try testing.expectEqual(1, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    // ID
+    try testing.expectEqualSlices(i64, &[_]i64{8}, try rg.readColumn(i64, 0));
+    // Int_Array.list.element
+    try testing.expectEqualSlices(i32, &[_]i32{-1}, try rg.readColumn(i32, 1));
+    // Int_Map.map.key
+    try testing.expectEqualDeep(&[_][]const u8{"k1"}, try rg.readColumn([]const u8, 3));
+    // Int_Map.map.value
+    try testing.expectEqualSlices(i32, &[_]i32{-1}, try rg.readColumn(i32, 4));
+    // Int_Map: [{"k1": -1}]
+    const int_map = try rg.readMapColumn([]const u8, i32, 3, 4);
+    try testing.expectEqual(1, int_map.len);
+    try testing.expectEqual(1, int_map[0].len);
+    try testing.expectEqualDeep(&[_]nestedReader.MapEntry([]const u8, i32){
+        .{ .key = "k1", .value = -1 },
+    }, int_map[0]);
+    // nested_Struct.a
+    try testing.expectEqualSlices(i32, &[_]i32{-1}, try rg.readColumn(i32, 7));
+    // nested_Struct.B.list.element: [[-1]]
+    const nested_b = try rg.readListColumn(i32, 8);
+    try testing.expectEqual(1, nested_b.len);
+    try testing.expectEqualSlices(i32, &[_]i32{-1}, nested_b[0]);
 }
 
 test "nulls snappy" {
@@ -1085,4 +1165,50 @@ test "byte stream split extended gzip" {
         [_]u8{ 48, 51, 49, 50, 53 }, // "03125"
     };
     try testing.expectEqualSlices([5]u8, &expected_flba5, flba5_plain[0..5]);
+}
+
+test "list columns" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/list_columns.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(3, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    // int64_list: [[1, 2, 3], [null, 1], [4]]
+    const int_lists = try rg.readListColumn(?i64, 0);
+    try testing.expectEqual(3, int_lists.len);
+    try testing.expectEqualDeep(&[_]?i64{ 1, 2, 3 }, int_lists[0]);
+    try testing.expectEqualDeep(&[_]?i64{ null, 1 }, int_lists[1]);
+    try testing.expectEqualDeep(&[_]?i64{4}, int_lists[2]);
+
+    // utf8_list: [["abc", "efg", "hij"], null, ["efg", null, "hij", "xyz"]]
+    const string_lists = try rg.readListColumn(?[]const u8, 1);
+    try testing.expectEqual(3, string_lists.len);
+    try testing.expectEqualDeep(&[_]?[]const u8{ "abc", "efg", "hij" }, string_lists[0]);
+    try testing.expectEqual(0, string_lists[1].len); // null list represented as empty
+    try testing.expectEqualDeep(&[_]?[]const u8{ "efg", null, "hij", "xyz" }, string_lists[2]);
+}
+
+test "repeated no annotation" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/repeated_no_annotation.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    // Note: num_rows in metadata is 0, but actual data has 6 rows
+    try testing.expectEqual(0, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    // id column
+    try testing.expectEqualSlices(i32, &[_]i32{ 1, 2, 3, 4, 5, 6 }, try rg.readColumn(i32, 0));
+    // phoneNumbers.phone.number - flattened phone numbers
+    try testing.expectEqualSlices(?i64, &[_]?i64{ null, null, null, 5555555555, 1111111111, 1111111111, 2222222222, 3333333333 }, try rg.readColumn(?i64, 1));
+    // phoneNumbers.phone.kind - flattened phone kinds
+    try testing.expectEqualDeep(&[_]?[]const u8{ null, null, null, null, "home", "home", null, "mobile" }, try rg.readColumn(?[]const u8, 2));
 }

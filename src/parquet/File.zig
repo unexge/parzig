@@ -9,6 +9,7 @@ const protocol_compact = @import("../thrift.zig").protocol_compact;
 const dynamic = @import("./dynamic.zig");
 const physical = @import("./physical.zig");
 const rowGroupReader = @import("./rowGroupReader.zig");
+const nestedReader = @import("./nestedReader.zig");
 
 const File = @This();
 
@@ -28,6 +29,18 @@ pub const RowGroup = struct {
 
     pub fn readColumn(self: *RowGroup, comptime T: type, index: usize) ![]T {
         return rowGroupReader.readColumn(T, self.file, &self.rg.columns[index]);
+    }
+
+    pub fn readListColumn(self: *RowGroup, comptime T: type, index: usize) ![][]const T {
+        return nestedReader.readList(T, self.file, &self.rg.columns[index]);
+    }
+
+    pub fn readMapColumn(self: *RowGroup, comptime K: type, comptime V: type, key_index: usize, value_index: usize) ![][]const nestedReader.MapEntry(K, V) {
+        return nestedReader.readMap(K, V, self.file, &self.rg.columns[key_index], &self.rg.columns[value_index]);
+    }
+
+    pub fn readStructColumn(self: *RowGroup, comptime T: type, base_index: usize) ![]T {
+        return nestedReader.readStruct(T, self.file, self.rg.columns, base_index, @intCast(self.rg.num_rows));
     }
 
     pub fn readColumnDynamic(self: *RowGroup, index: usize) !dynamic.Values {
@@ -79,7 +92,9 @@ pub fn deinit(self: *File) void {
     self.arena.deinit();
 }
 
-pub fn findSchemaElement(self: *File, path: [][]const u8) ?std.meta.Tuple(&[_]type{ u8, u8, parquet_schema.SchemaElement }) {
+/// Find a schema element by path and return its index, definition level, repetition level, and the element itself.
+/// Returns null if the path is not found or invalid.
+pub fn findSchemaElement(self: *File, path: [][]const u8) ?struct { index: usize, max_definition_level: u8, max_repetition_level: u8, elem: parquet_schema.SchemaElement } {
     if (path.len == 0 or self.metadata.schema.len < 2) {
         return null;
     }
@@ -135,33 +150,29 @@ pub fn findSchemaElement(self: *File, path: [][]const u8) ?std.meta.Tuple(&[_]ty
         current_idx = found_idx + 1;
     }
 
-    return .{ max_definition_level, max_repetition_level, elem };
+    return .{ .index = current_idx - 1, .max_definition_level = max_definition_level, .max_repetition_level = max_repetition_level, .elem = elem };
 }
 
-pub fn readLevelDataV1(self: *File, reader: *Reader, encoding: parquet_schema.Encoding, bit_width: u8, num_values: usize) ![]u16 {
-    const values = try self.arena.allocator().alloc(u16, num_values);
+pub fn readLevelDataV1(_: *File, reader: *Reader, encoding: parquet_schema.Encoding, bit_width: u8, dest: []u16) !void {
     switch (encoding) {
         .BIT_PACKED => {
-            try physical.bitPacked(u16, reader, bit_width, values);
+            try physical.bitPacked(u16, reader, bit_width, dest);
         },
         .RLE => {
-            try physical.runLengthBitPackedHybridLengthPrepended(u16, reader, bit_width, values);
+            try physical.runLengthBitPackedHybridLengthPrepended(u16, reader, bit_width, dest);
         },
         else => {
             std.debug.print("Unsupported repetition/definition level encoding: {any}\n", .{encoding});
             return error.UnsupportedDefinitionLevelEncoding;
         },
     }
-    return values;
 }
 
-pub fn readLevelDataV2(self: *File, reader: *Reader, bit_width: u8, num_values: usize, length: u32) ![]u16 {
+pub fn readLevelDataV2(_: *File, reader: *Reader, bit_width: u8, dest: []u16, length: u32) !void {
     var reader_buf: [1024]u8 = undefined;
     var limited_reader = reader.limited(.limited(length), &reader_buf);
 
-    const values = try self.arena.allocator().alloc(u16, num_values);
-    try physical.runLengthBitPackedHybrid(u16, &limited_reader.interface, bit_width, values);
-    return values;
+    try physical.runLengthBitPackedHybrid(u16, &limited_reader.interface, bit_width, dest);
 }
 
 test {
