@@ -2,6 +2,7 @@ const std = @import("std");
 const parzig = @import("parzig");
 
 const File = parzig.parquet.File;
+const nestedReader = parzig.parquet.nestedReader;
 const testing = std.testing;
 const io = testing.io;
 const Io = std.Io;
@@ -874,14 +875,32 @@ test "map no value" {
 
     var rg = file.rowGroup(0);
 
-    // my_map.key_value.key - all map keys flattened
-    try testing.expectEqualSlices(i32, &[_]i32{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, try rg.readColumn(i32, 0));
-    // my_map.key_value.value - all null values
-    try testing.expectEqualSlices(?i32, &[_]?i32{ null, null, null, null, null, null, null, null, null }, try rg.readColumn(?i32, 1));
-    // my_map_no_v.key_value.key
-    try testing.expectEqualSlices(i32, &[_]i32{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, try rg.readColumn(i32, 2));
-    // my_list.list.element
-    try testing.expectEqualSlices(i32, &[_]i32{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, try rg.readColumn(i32, 3));
+    // my_map: [{1: null, 2: null, 3: null}, {4: null, 5: null, 6: null}, {7: null, 8: null, 9: null}]
+    const my_map = try rg.readMapColumn(i32, ?i32, 0, 1);
+    try testing.expectEqual(3, my_map.len);
+    try testing.expectEqual(3, my_map[0].len);
+    try testing.expectEqualDeep(&[_]nestedReader.MapEntry(i32, ?i32){
+        .{ .key = 1, .value = null },
+        .{ .key = 2, .value = null },
+        .{ .key = 3, .value = null },
+    }, my_map[0]);
+    try testing.expectEqualDeep(&[_]nestedReader.MapEntry(i32, ?i32){
+        .{ .key = 4, .value = null },
+        .{ .key = 5, .value = null },
+        .{ .key = 6, .value = null },
+    }, my_map[1]);
+    try testing.expectEqualDeep(&[_]nestedReader.MapEntry(i32, ?i32){
+        .{ .key = 7, .value = null },
+        .{ .key = 8, .value = null },
+        .{ .key = 9, .value = null },
+    }, my_map[2]);
+
+    // my_list: [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    const my_list = try rg.readListColumn(i32, 3);
+    try testing.expectEqual(3, my_list.len);
+    try testing.expectEqualSlices(i32, &[_]i32{ 1, 2, 3 }, my_list[0]);
+    try testing.expectEqualSlices(i32, &[_]i32{ 4, 5, 6 }, my_list[1]);
+    try testing.expectEqualSlices(i32, &[_]i32{ 7, 8, 9 }, my_list[2]);
 }
 
 test "nation dict malformed" {
@@ -940,10 +959,19 @@ test "non-nullable impala" {
     try testing.expectEqualDeep(&[_][]const u8{"k1"}, try rg.readColumn([]const u8, 3));
     // Int_Map.map.value
     try testing.expectEqualSlices(i32, &[_]i32{-1}, try rg.readColumn(i32, 4));
+    // Int_Map: [{"k1": -1}]
+    const int_map = try rg.readMapColumn([]const u8, i32, 3, 4);
+    try testing.expectEqual(1, int_map.len);
+    try testing.expectEqual(1, int_map[0].len);
+    try testing.expectEqualDeep(&[_]nestedReader.MapEntry([]const u8, i32){
+        .{ .key = "k1", .value = -1 },
+    }, int_map[0]);
     // nested_Struct.a
     try testing.expectEqualSlices(i32, &[_]i32{-1}, try rg.readColumn(i32, 7));
-    // nested_Struct.B.list.element
-    try testing.expectEqualSlices(i32, &[_]i32{-1}, try rg.readColumn(i32, 8));
+    // nested_Struct.B.list.element: [[-1]]
+    const nested_b = try rg.readListColumn(i32, 8);
+    try testing.expectEqual(1, nested_b.len);
+    try testing.expectEqualSlices(i32, &[_]i32{-1}, nested_b[0]);
 }
 
 test "nulls snappy" {

@@ -35,6 +35,10 @@ pub const RowGroup = struct {
         return nestedReader.readList(T, self.file, &self.rg.columns[index]);
     }
 
+    pub fn readMapColumn(self: *RowGroup, comptime K: type, comptime V: type, key_index: usize, value_index: usize) ![][]const nestedReader.MapEntry(K, V) {
+        return nestedReader.readMap(K, V, self.file, &self.rg.columns[key_index], &self.rg.columns[value_index]);
+    }
+
     pub fn readColumnDynamic(self: *RowGroup, index: usize) !dynamic.Values {
         return dynamic.readColumn(self.file, &self.rg.columns[index]);
     }
