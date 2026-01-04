@@ -68,11 +68,14 @@ pub fn readColumnWithLevels(comptime T: type, file: *File, column: *parquet_sche
     const page_header_reader = protocol_compact.StructReader(parquet_schema.PageHeader);
 
     // Store values in the dictionary page, these values will be referenced in data pages
+    // dictionary_page_offset=0 means "no dictionary" since offset 0 is where PAR1 magic is
     var dict_values: ?[]Inner = null;
     if (metadata.dictionary_page_offset) |offset| {
-        try file.file_reader.seekTo(@intCast(offset));
-        const dictionary_page_header = try page_header_reader.read(arena, &file.file_reader.interface);
-        dict_values = try readDictionaryPage(Inner, arena, dictionary_page_header, &file.file_reader.interface, metadata.codec);
+        if (offset > 0) {
+            try file.file_reader.seekTo(@intCast(offset));
+            const dictionary_page_header = try page_header_reader.read(arena, &file.file_reader.interface);
+            dict_values = try readDictionaryPage(Inner, arena, dictionary_page_header, &file.file_reader.interface, metadata.codec);
+        }
     }
 
     const read_values = try arena.alloc(T, @intCast(metadata.num_values));

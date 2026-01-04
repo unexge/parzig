@@ -150,13 +150,6 @@ pub fn StructReader(comptime T: type) type {
         map = 11,
         @"struct" = 12,
         uuid = 13,
-
-        fn fromEnum(id: u4) !@This() {
-            if (id > 13) {
-                return error.InvalidFieldType;
-            }
-            return @enumFromInt(id);
-        }
     };
 
     const fields = switch (@typeInfo(T)) {
@@ -199,6 +192,43 @@ pub fn StructReader(comptime T: type) type {
     };
 
     return struct {
+        fn skipField(reader: *Reader, field_type: FieldType) !void {
+            switch (field_type) {
+                .stop, .boolean_true, .boolean_false => {},
+                .i8, .i16, .i32, .i64 => _ = try reader.takeLeb128(u64),
+                .double => try reader.discardAll(8),
+                .binary => try reader.discardAll64(try reader.takeLeb128(u64)),
+                .list, .set => {
+                    const header = try reader.takeByte();
+                    const size_short: u4 = @truncate(header >> 4);
+                    const size: u32 = if (size_short == 0x0f)
+                        try reader.takeLeb128(u32)
+                    else
+                        size_short;
+                    const elem_type: FieldType = @enumFromInt(@as(u4, @truncate(header)));
+                    for (0..size) |_| try skipField(reader, elem_type);
+                },
+                .map => {
+                    const size = try reader.takeLeb128(u32);
+                    if (size > 0) {
+                        const types = try reader.takeByte();
+                        for (0..size) |_| {
+                            try skipField(reader, @enumFromInt(@as(u4, @truncate(types >> 4))));
+                            try skipField(reader, @enumFromInt(@as(u4, @truncate(types))));
+                        }
+                    }
+                },
+                .@"struct" => {
+                    while (true) {
+                        const header = try reader.takeByte();
+                        if (header == 0) break;
+                        try skipField(reader, @enumFromInt(@as(u4, @truncate(header))));
+                    }
+                },
+                .uuid => try reader.discardAll(16),
+            }
+        }
+
         pub fn read(arena: std.mem.Allocator, reader: *Reader) !T {
             var fields_set = std.mem.zeroes([max_field_id]bool);
             var result: T = undefined;
@@ -218,18 +248,17 @@ pub fn StructReader(comptime T: type) type {
                 if (field_id == 0) {
                     break;
                 }
-                if (field_id < 1 or field_id > max_field_id) {
-                    return error.InvalidFieldId;
-                }
                 last_field_id = field_id;
 
-                if (@as(u4, @truncate(header)) == 15) {
+                const field_type: FieldType = @enumFromInt(@as(u4, @truncate(header)));
+                if (field_type == .stop) {
                     break;
                 }
 
-                const field_type = try FieldType.fromEnum(@truncate(header));
-                if (field_type == .stop) {
-                    break;
+                // Skip unknown field IDs
+                if (field_id < 1 or field_id > max_field_id) {
+                    try skipField(reader, field_type);
+                    continue;
                 }
 
                 inline for (field_types, field_names, 0..) |expected_field_type, field_name, i| {
@@ -239,74 +268,70 @@ pub fn StructReader(comptime T: type) type {
 
                     const field_id_idx: usize = @intCast(field_id - 1);
                     if (field_id_idx == i) {
-                        fields_set[field_id_idx] = true;
-
                         switch (field_type) {
                             .stop => unreachable,
-                            .boolean_true => {
+                            .boolean_true, .boolean_false => {
                                 if (expected_field_type != bool) {
-                                    return error.UnexpectedBool;
+                                    try skipField(reader, field_type);
+                                } else {
+                                    fields_set[field_id_idx] = true;
+                                    @field(result, field_name) = field_type == .boolean_true;
                                 }
-                                @field(result, field_name) = true;
-                            },
-                            .boolean_false => {
-                                if (expected_field_type != bool) {
-                                    return error.UnexpectedBool;
-                                }
-                                @field(result, field_name) = false;
                             },
                             .i8, .i16, .i32, .i64 => {
                                 if (@typeInfo(expected_field_type) != .int and @typeInfo(expected_field_type) != .@"enum") {
-                                    std.debug.print("Unexpected {any}\n", .{expected_field_type});
-                                    return error.UnexpectedInt;
+                                    try skipField(reader, field_type);
+                                } else {
+                                    fields_set[field_id_idx] = true;
+                                    @field(result, field_name) = if (@typeInfo(expected_field_type) == .@"enum")
+                                        @enumFromInt(try readZigZagInt(i32, reader))
+                                    else
+                                        try readZigZagInt(expected_field_type, reader);
                                 }
-
-                                @field(result, field_name) = if (@typeInfo(expected_field_type) == .@"enum")
-                                    @enumFromInt(try readZigZagInt(i32, reader))
-                                else
-                                    try readZigZagInt(expected_field_type, reader);
                             },
-                            .double => return error.DoubleNotSupported,
+                            .double => try skipField(reader, field_type),
                             .binary => {
-                                switch (@typeInfo(expected_field_type)) {
-                                    .pointer => |*p| {
-                                        if (p.size != .slice or !p.is_const or p.child != u8) {
-                                            return error.UnexpectedBinary;
-                                        }
-                                    },
-                                    else => return error.UnexpectedBinary,
+                                const is_binary = switch (@typeInfo(expected_field_type)) {
+                                    .pointer => |*p| p.size == .slice and p.is_const and p.child == u8,
+                                    else => false,
+                                };
+                                if (!is_binary) {
+                                    try skipField(reader, field_type);
+                                } else {
+                                    fields_set[field_id_idx] = true;
+                                    @field(result, field_name) = try readBinary(arena, reader);
                                 }
-
-                                @field(result, field_name) = try readBinary(arena, reader);
                             },
                             .list => {
-                                const elem_type = switch (@typeInfo(expected_field_type)) {
-                                    .pointer => |*p| blk: {
-                                        if (p.size != .slice) {
-                                            return error.UnexpectedList;
-                                        }
-                                        break :blk p.child;
-                                    },
-                                    else => return error.UnexpectedList,
+                                const is_list = switch (@typeInfo(expected_field_type)) {
+                                    .pointer => |*p| p.size == .slice,
+                                    else => false,
                                 };
-
-                                @field(result, field_name) = try ListReader(unwrapOptional(elem_type)).read(arena, reader);
+                                if (!is_list) {
+                                    try skipField(reader, field_type);
+                                } else {
+                                    const elem_type = switch (@typeInfo(expected_field_type)) {
+                                        .pointer => |*p| p.child,
+                                        else => unreachable,
+                                    };
+                                    fields_set[field_id_idx] = true;
+                                    @field(result, field_name) = try ListReader(unwrapOptional(elem_type)).read(arena, reader);
+                                }
                             },
-                            .set => return error.SetNotSupported,
-                            .map => return error.MapNotSupported,
+                            .set, .map, .uuid => try skipField(reader, field_type),
                             .@"struct" => {
                                 if (@typeInfo(expected_field_type) != .@"struct" and @typeInfo(expected_field_type) != .@"union") {
-                                    return error.UnexpectedStruct;
-                                }
-
-                                const value = try StructReader(expected_field_type).read(arena, reader);
-                                if (@typeInfo(T) == .@"union") {
-                                    result = @unionInit(T, field_name, value);
+                                    try skipField(reader, field_type);
                                 } else {
-                                    @field(result, field_name) = value;
+                                    fields_set[field_id_idx] = true;
+                                    const value = try StructReader(expected_field_type).read(arena, reader);
+                                    if (@typeInfo(T) == .@"union") {
+                                        result = @unionInit(T, field_name, value);
+                                    } else {
+                                        @field(result, field_name) = value;
+                                    }
                                 }
                             },
-                            .uuid => return error.UuidNotSupported,
                         }
                     }
                 }
