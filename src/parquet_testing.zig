@@ -931,13 +931,25 @@ test "nested structs rust" {
 
     var rg = file.rowGroup(0);
 
-    // roll_num struct fields (columns 0-5)
-    try testing.expectEqualSlices(i64, &[_]i64{190406409000602}, try rg.readColumn(i64, 0)); // min
-    try testing.expectEqualSlices(i64, &[_]i64{190407175004000}, try rg.readColumn(i64, 1)); // max
-    try testing.expectEqualSlices(i64, &[_]i64{190406671229999}, try rg.readColumn(i64, 2)); // mean
-    try testing.expectEqualSlices(i64, &[_]i64{495}, try rg.readColumn(i64, 3)); // count
-    try testing.expectEqualSlices(i64, &[_]i64{94251302258849568}, try rg.readColumn(i64, 4)); // sum
-    try testing.expectEqualSlices(i64, &[_]i64{0}, try rg.readColumn(i64, 5)); // variance
+    // roll_num struct (columns 0-5): {min, max, mean, count, sum, variance}
+    const RollNum = struct {
+        min: i64,
+        max: i64,
+        mean: i64,
+        count: i64,
+        sum: i64,
+        variance: i64,
+    };
+    const roll_num = try rg.readStructColumn(RollNum, 0);
+    try testing.expectEqual(1, roll_num.len);
+    try testing.expectEqual(RollNum{
+        .min = 190406409000602,
+        .max = 190407175004000,
+        .mean = 190406671229999,
+        .count = 495,
+        .sum = 94251302258849568,
+        .variance = 0,
+    }, roll_num[0]);
 }
 
 test "non-nullable impala" {

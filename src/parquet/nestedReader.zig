@@ -61,6 +61,27 @@ pub fn readMap(
     return maps;
 }
 
+pub fn readStruct(
+    comptime T: type,
+    file: *File,
+    columns: []parquet_schema.ColumnChunk,
+    base_index: usize,
+    num_rows: usize,
+) ![]T {
+    const arena = file.arena.allocator();
+    const fields = @typeInfo(T).@"struct".fields;
+    const result = try arena.alloc(T, num_rows);
+
+    inline for (fields, 0..) |field, field_idx| {
+        const column_values = try rowGroupReader.readColumn(field.type, file, &columns[base_index + field_idx]);
+        for (0..num_rows) |row_idx| {
+            @field(result[row_idx], field.name) = column_values[row_idx];
+        }
+    }
+
+    return result;
+}
+
 pub fn readList(
     comptime T: type,
     file: *File,
