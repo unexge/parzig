@@ -12,7 +12,7 @@ It only supports reading Parquet files. You can find Parquet schema in `parquet.
 ## Development workflow
 Before making any changes, make a plan first and run through it with the operator.
 Keep your plan simple, concise and break it down into small, logical steps. Eventually each logical step should be commited separately.
-Ensure to each commit compiles, passes all tests and also formatted.
+Ensure to each commit compiles, passes all tests and also formatted. Before making changes, make sure to add failing tests first.
 
 Also, make sure to create a new edit before making any change.
 
