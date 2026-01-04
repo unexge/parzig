@@ -1212,3 +1212,21 @@ test "repeated no annotation" {
     // phoneNumbers.phone.kind - flattened phone kinds
     try testing.expectEqualDeep(&[_]?[]const u8{ null, null, null, null, "home", "home", null, "mobile" }, try rg.readColumn(?[]const u8, 2));
 }
+
+test "dict page offset zero" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/dict-page-offset-zero.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(39, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    const values = try rg.readColumn(i32, 0);
+
+    try testing.expectEqual(39, values.len);
+    for (values) |value| {
+        try testing.expectEqual(1552, value);
+    }
+}

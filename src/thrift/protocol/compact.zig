@@ -198,6 +198,58 @@ pub fn StructReader(comptime T: type) type {
         break :blk field_names;
     };
 
+    fn skipFieldData(field_type_id: u4, reader_ptr: *Reader, arena: std.mem.Allocator) !void {
+        const field_type = try FieldType.fromEnum(field_type_id);
+
+        switch (field_type) {
+            .stop => {},
+            .boolean_true, .boolean_false => {},
+            .i8, .i16, .i32, .i64 => _ = try reader_ptr.takeLeb128(u64),
+            .double => return error.DoubleNotSupported,
+            .binary => {
+                const length = try reader_ptr.takeLeb128(u64);
+                try reader_ptr.skipBytes(length);
+            },
+            .list => {
+                const header = try reader_ptr.takeByte();
+                const size_short: u4 = @truncate(header >> 4);
+                const size: usize = @intCast(if (size_short == 0b1111)
+                    try reader_ptr.takeLeb128(u32)
+                else
+                    size_short);
+                const elem_type_id: u4 = @truncate(header);
+
+                for (0..size) |_| {
+                    try skipFieldData(elem_type_id, reader_ptr, arena);
+                }
+            },
+            .set => return error.SetNotSupported,
+            .map => return error.MapNotSupported,
+            .@"struct" => {
+                var last_field_id: i16 = 0;
+                while (true) {
+                    const header = try reader_ptr.takeByte();
+                    if (header == 0) break;
+
+                    const field_id_delta: u4 = @truncate(header >> 4);
+                    const field_id = if (field_id_delta == 0)
+                        try readZigZagInt(i16, reader_ptr)
+                    else
+                        last_field_id + field_id_delta;
+
+                    if (field_id == 0) break;
+                    last_field_id = field_id;
+
+                    const nested_field_type_id: u4 = @truncate(header);
+                    if (nested_field_type_id == 0) break;
+
+                    try skipFieldData(nested_field_type_id, reader_ptr, arena);
+                }
+            },
+            .uuid => return error.UuidNotSupported,
+        }
+    }
+
     return struct {
         pub fn read(arena: std.mem.Allocator, reader: *Reader) !T {
             var fields_set = std.mem.zeroes([max_field_id]bool);
