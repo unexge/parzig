@@ -1,6 +1,4 @@
 //! A Thrift parser aimed on parsing `parquet.thrift` only.
-//! TODOs:
-//!  - Memory leaks on failure, add some failure test cases.
 
 const std = @import("std");
 
@@ -166,6 +164,7 @@ pub const Definition = union(enum) {
             }
 
             const @"type" = try Type.parse(allocator, scanner);
+            errdefer @"type".deinit(allocator);
             const identifier = try parseIdentifier(scanner);
 
             var default: ?ConstValue = null;
@@ -315,6 +314,7 @@ pub const Type = union(enum) {
 
     fn parse(allocator: std.mem.Allocator, scanner: *PeekableScanner) !*Type {
         const ty = try allocator.create(Type);
+        errdefer allocator.destroy(ty);
 
         const token = scanner.next();
         switch (token.kind) {
@@ -351,6 +351,7 @@ pub const Type = union(enum) {
             .type_list => {
                 _ = try scanner.expect(.angle_bracket_left);
                 const elem = try Type.parse(allocator, scanner);
+                errdefer elem.deinit(allocator);
                 _ = try scanner.expect(.angle_bracket_right);
                 ty.* = .{
                     .builtin = .{
@@ -361,6 +362,7 @@ pub const Type = union(enum) {
             .type_set => {
                 _ = try scanner.expect(.angle_bracket_left);
                 const elem = try Type.parse(allocator, scanner);
+                errdefer elem.deinit(allocator);
                 _ = try scanner.expect(.angle_bracket_right);
                 ty.* = .{
                     .builtin = .{
@@ -371,8 +373,10 @@ pub const Type = union(enum) {
             .type_map => {
                 _ = try scanner.expect(.angle_bracket_left);
                 const key = try Type.parse(allocator, scanner);
+                errdefer key.deinit(allocator);
                 _ = try scanner.expect(.comma);
                 const value = try Type.parse(allocator, scanner);
+                errdefer value.deinit(allocator);
                 _ = try scanner.expect(.angle_bracket_right);
 
                 ty.* = .{
@@ -754,6 +758,36 @@ test "type" {
     } });
 }
 
+test "type parse errors" {
+    // Missing closing bracket for list
+    try expectTypeParseError("list<i32", error.UnexpectedToken);
+    // Missing closing bracket for set
+    try expectTypeParseError("set<i32", error.UnexpectedToken);
+    // Missing closing bracket for map
+    try expectTypeParseError("map<i32, i64", error.UnexpectedToken);
+    // Missing comma in map
+    try expectTypeParseError("map<i32 i64>", error.UnexpectedToken);
+    // Nested type parse error
+    try expectTypeParseError("list<map<i32, i64>", error.UnexpectedToken);
+    try expectTypeParseError("map<list<i32, i64>", error.UnexpectedToken);
+}
+
+test "struct parse errors" {
+    // Missing field identifier after type
+    try std.testing.expectError(error.UnexpectedToken, expectParse(
+        \\struct Foo {
+        \\  i32
+        \\}
+    ));
+
+    // Invalid default value
+    try std.testing.expectError(error.ConstValueNotSupported, expectParse(
+        \\struct Foo {
+        \\  i32 bar = 42
+        \\}
+    ));
+}
+
 fn expectParse(source: []const u8) !Document {
     return Document.init(std.testing.allocator, source);
 }
@@ -763,4 +797,10 @@ fn expectType(source: []const u8, expected_ty: Type) !void {
     const ty = try Type.parse(std.testing.allocator, &scanner);
     defer ty.deinit(std.testing.allocator);
     try std.testing.expectEqualDeep(expected_ty, ty.*);
+}
+
+fn expectTypeParseError(source: []const u8, expected_err: anyerror) !void {
+    var scanner = PeekableScanner.init(source);
+    const result = Type.parse(std.testing.allocator, &scanner);
+    try std.testing.expectError(expected_err, result);
 }
