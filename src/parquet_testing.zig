@@ -2,7 +2,7 @@ const std = @import("std");
 const parzig = @import("parzig");
 
 const File = parzig.parquet.File;
-const nestedReader = parzig.parquet.nestedReader;
+const MapEntry = parzig.parquet.MapEntry;
 const testing = std.testing;
 const io = testing.io;
 const Io = std.Io;
@@ -879,17 +879,17 @@ test "map no value" {
     const my_map = try rg.readMapColumn(i32, ?i32, 0, 1);
     try testing.expectEqual(3, my_map.len);
     try testing.expectEqual(3, my_map[0].len);
-    try testing.expectEqualDeep(&[_]nestedReader.MapEntry(i32, ?i32){
+    try testing.expectEqualDeep(&[_]MapEntry(i32, ?i32){
         .{ .key = 1, .value = null },
         .{ .key = 2, .value = null },
         .{ .key = 3, .value = null },
     }, my_map[0]);
-    try testing.expectEqualDeep(&[_]nestedReader.MapEntry(i32, ?i32){
+    try testing.expectEqualDeep(&[_]MapEntry(i32, ?i32){
         .{ .key = 4, .value = null },
         .{ .key = 5, .value = null },
         .{ .key = 6, .value = null },
     }, my_map[1]);
-    try testing.expectEqualDeep(&[_]nestedReader.MapEntry(i32, ?i32){
+    try testing.expectEqualDeep(&[_]MapEntry(i32, ?i32){
         .{ .key = 7, .value = null },
         .{ .key = 8, .value = null },
         .{ .key = 9, .value = null },
@@ -975,7 +975,7 @@ test "non-nullable impala" {
     const int_map = try rg.readMapColumn([]const u8, i32, 3, 4);
     try testing.expectEqual(1, int_map.len);
     try testing.expectEqual(1, int_map[0].len);
-    try testing.expectEqualDeep(&[_]nestedReader.MapEntry([]const u8, i32){
+    try testing.expectEqualDeep(&[_]MapEntry([]const u8, i32){
         .{ .key = "k1", .value = -1 },
     }, int_map[0]);
     // nested_Struct.a
