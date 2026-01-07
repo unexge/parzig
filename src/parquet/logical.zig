@@ -113,6 +113,10 @@ pub const String = []const u8;
 
 pub const Enum = []const u8;
 
+pub const Json = []const u8;
+
+pub const Bson = []const u8;
+
 test "date logical type" {
     var reader_buf: [1024]u8 = undefined;
     var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/date_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
@@ -542,6 +546,88 @@ test "enum logical type with nulls" {
     try std.testing.expectEqualStrings("pending", enums[2].?);
     try std.testing.expect(enums[3] == null);
     try std.testing.expectEqualStrings("completed", enums[4].?);
+}
+
+test "json logical type" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/json_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(4, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const jsons = try rg.readColumn(Json, 0);
+    try std.testing.expectEqual(4, jsons.len);
+
+    try std.testing.expectEqualSlices(u8, "{}", jsons[0]);
+    try std.testing.expectEqualSlices(u8, "{\"name\":\"Alice\"}", jsons[1]);
+    try std.testing.expectEqualSlices(u8, "{\"age\":30,\"city\":\"NYC\"}", jsons[2]);
+    try std.testing.expectEqualSlices(u8, "[1,2,3]", jsons[3]);
+}
+
+test "json logical type with nulls" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/json_test_nullable.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const jsons = try rg.readColumn(?Json, 0);
+    try std.testing.expectEqual(5, jsons.len);
+
+    try std.testing.expectEqualSlices(u8, "{\"name\":\"Alice\"}", jsons[0].?);
+    try std.testing.expect(jsons[1] == null);
+    try std.testing.expectEqualSlices(u8, "{\"age\":30}", jsons[2].?);
+    try std.testing.expect(jsons[3] == null);
+    try std.testing.expectEqualSlices(u8, "[1,2,3]", jsons[4].?);
+}
+
+test "bson logical type" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/bson_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(4, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const bsons = try rg.readColumn(Bson, 0);
+    try std.testing.expectEqual(4, bsons.len);
+
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0x05, 0x00, 0x00, 0x00, 0x00 }, bsons[0]);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0x16, 0x00, 0x00, 0x00, 0x02, 0x6e, 0x61, 0x6d, 0x65, 0x00, 0x06, 0x00, 0x00, 0x00, 0x41, 0x6c, 0x69, 0x63, 0x65, 0x00, 0x00 }, bsons[1]);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0x1a, 0x00, 0x00, 0x00, 0x10, 0x61, 0x67, 0x65, 0x00, 0x1e, 0x00, 0x00, 0x00, 0x02, 0x63, 0x69, 0x74, 0x79, 0x00, 0x04, 0x00, 0x00, 0x00, 0x4e, 0x59, 0x43, 0x00, 0x00 }, bsons[2]);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0x0d, 0x00, 0x00, 0x00, 0x10, 0x69, 0x64, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00 }, bsons[3]);
+}
+
+test "bson logical type with nulls" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/bson_test_nullable.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const bsons = try rg.readColumn(?Bson, 0);
+    try std.testing.expectEqual(5, bsons.len);
+
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0x16, 0x00, 0x00, 0x00, 0x02, 0x6e, 0x61, 0x6d, 0x65, 0x00, 0x06, 0x00, 0x00, 0x00, 0x41, 0x6c, 0x69, 0x63, 0x65, 0x00, 0x00 }, bsons[0].?);
+    try std.testing.expect(bsons[1] == null);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0x1a, 0x00, 0x00, 0x00, 0x10, 0x61, 0x67, 0x65, 0x00, 0x1e, 0x00, 0x00, 0x00, 0x02, 0x63, 0x69, 0x74, 0x79, 0x00, 0x04, 0x00, 0x00, 0x00, 0x4e, 0x59, 0x43, 0x00, 0x00 }, bsons[2].?);
+    try std.testing.expect(bsons[3] == null);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0x0d, 0x00, 0x00, 0x00, 0x10, 0x69, 0x64, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00 }, bsons[4].?);
 }
 
 const std = @import("std");

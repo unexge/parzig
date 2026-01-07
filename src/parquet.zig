@@ -12,6 +12,8 @@ pub const TimeNanos = logical.TimeNanos;
 pub const UUID = logical.UUID;
 pub const String = logical.String;
 pub const Enum = logical.Enum;
+pub const Json = logical.Json;
+pub const Bson = logical.Bson;
 
 test {
     _ = File;
