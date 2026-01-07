@@ -3,6 +3,10 @@
 // This module contains Parquet's logical types, their corresponding physical types,
 // and how to convert logical types to physical types.
 //
+// This module aims to provide zero-copy conversion between logical and physical types,
+// and as a consequence, some types might be unergonomic,
+// like `Int8` actually stores it's value as `i32` and provides `asI8` method to get the value as `i8`.
+//
 // See https://github.com/apache/parquet-format/blob/master/LogicalTypes.md
 
 pub fn parse(comptime T: type) ?type {
@@ -24,6 +28,18 @@ pub fn parse(comptime T: type) ?type {
         return TimeNanos;
     } else if (T == UUID) {
         return UUID;
+    } else if (T == Int8) {
+        return Int8;
+    } else if (T == UInt8) {
+        return UInt8;
+    } else if (T == Int16) {
+        return Int16;
+    } else if (T == UInt16) {
+        return UInt16;
+    } else if (T == UInt32) {
+        return UInt32;
+    } else if (T == UInt64) {
+        return UInt64;
     } else {
         return null;
     }
@@ -116,6 +132,84 @@ pub const Enum = []const u8;
 pub const Json = []const u8;
 
 pub const Bson = []const u8;
+
+pub const Int8 = struct {
+    value: i32,
+
+    pub const physical_type = i32;
+
+    pub inline fn fromPhysical(comptime T: type, physical: []T) if (@typeInfo(T) == .optional) []?Int8 else []Int8 {
+        return @ptrCast(physical);
+    }
+
+    pub fn asI8(self: Int8) i8 {
+        return @intCast(self.value);
+    }
+};
+
+pub const UInt8 = struct {
+    value: i32,
+
+    pub const physical_type = i32;
+
+    pub inline fn fromPhysical(comptime T: type, physical: []T) if (@typeInfo(T) == .optional) []?UInt8 else []UInt8 {
+        return @ptrCast(physical);
+    }
+
+    pub fn asU8(self: UInt8) u8 {
+        return @intCast(self.value);
+    }
+};
+
+pub const Int16 = struct {
+    value: i32,
+
+    pub const physical_type = i32;
+
+    pub inline fn fromPhysical(comptime T: type, physical: []T) if (@typeInfo(T) == .optional) []?Int16 else []Int16 {
+        return @ptrCast(physical);
+    }
+
+    pub fn asI16(self: Int16) i16 {
+        return @intCast(self.value);
+    }
+};
+
+pub const UInt16 = struct {
+    value: i32,
+
+    pub const physical_type = i32;
+
+    pub inline fn fromPhysical(comptime T: type, physical: []T) if (@typeInfo(T) == .optional) []?UInt16 else []UInt16 {
+        return @ptrCast(physical);
+    }
+
+    pub fn asU16(self: UInt16) u16 {
+        return @intCast(self.value);
+    }
+};
+
+pub const UInt32 = struct {
+    value: u32,
+
+    pub const physical_type = i32;
+
+    pub inline fn fromPhysical(comptime T: type, physical: []T) if (@typeInfo(T) == .optional) []?UInt32 else []UInt32 {
+        const reinterpreted: if (@typeInfo(T) == .optional) []?u32 else []u32 = @ptrCast(physical);
+        return @ptrCast(reinterpreted);
+    }
+};
+
+pub const UInt64 = struct {
+    value: u64,
+
+    pub const physical_type = i64;
+
+    pub inline fn fromPhysical(comptime T: type, physical: []T) if (@typeInfo(T) == .optional) []?UInt64 else []UInt64 {
+        const reinterpreted: if (@typeInfo(T) == .optional) []?u64 else []u64 = @ptrCast(physical);
+        return @ptrCast(reinterpreted);
+    }
+};
 
 test "date logical type" {
     var reader_buf: [1024]u8 = undefined;
@@ -628,6 +722,258 @@ test "bson logical type with nulls" {
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0x1a, 0x00, 0x00, 0x00, 0x10, 0x61, 0x67, 0x65, 0x00, 0x1e, 0x00, 0x00, 0x00, 0x02, 0x63, 0x69, 0x74, 0x79, 0x00, 0x04, 0x00, 0x00, 0x00, 0x4e, 0x59, 0x43, 0x00, 0x00 }, bsons[2].?);
     try std.testing.expect(bsons[3] == null);
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0x0d, 0x00, 0x00, 0x00, 0x10, 0x69, 0x64, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00 }, bsons[4].?);
+}
+
+test "int8 logical type" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/int8_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(Int8, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(i8, -128), values[0].asI8());
+    try std.testing.expectEqual(@as(i8, -10), values[1].asI8());
+    try std.testing.expectEqual(@as(i8, 0), values[2].asI8());
+    try std.testing.expectEqual(@as(i8, 10), values[3].asI8());
+    try std.testing.expectEqual(@as(i8, 127), values[4].asI8());
+}
+
+test "int8 logical type with nulls" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/int8_test_nullable.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(?Int8, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(i8, -128), values[0].?.asI8());
+    try std.testing.expect(values[1] == null);
+    try std.testing.expectEqual(@as(i8, 0), values[2].?.asI8());
+    try std.testing.expect(values[3] == null);
+    try std.testing.expectEqual(@as(i8, 127), values[4].?.asI8());
+}
+
+test "uint8 logical type" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/uint8_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(UInt8, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(u8, 0), values[0].asU8());
+    try std.testing.expectEqual(@as(u8, 50), values[1].asU8());
+    try std.testing.expectEqual(@as(u8, 100), values[2].asU8());
+    try std.testing.expectEqual(@as(u8, 200), values[3].asU8());
+    try std.testing.expectEqual(@as(u8, 255), values[4].asU8());
+}
+
+test "uint8 logical type with nulls" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/uint8_test_nullable.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(?UInt8, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(u8, 0), values[0].?.asU8());
+    try std.testing.expect(values[1] == null);
+    try std.testing.expectEqual(@as(u8, 100), values[2].?.asU8());
+    try std.testing.expect(values[3] == null);
+    try std.testing.expectEqual(@as(u8, 255), values[4].?.asU8());
+}
+
+test "int16 logical type" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/int16_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(Int16, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(i16, -32768), values[0].asI16());
+    try std.testing.expectEqual(@as(i16, -1000), values[1].asI16());
+    try std.testing.expectEqual(@as(i16, 0), values[2].asI16());
+    try std.testing.expectEqual(@as(i16, 1000), values[3].asI16());
+    try std.testing.expectEqual(@as(i16, 32767), values[4].asI16());
+}
+
+test "int16 logical type with nulls" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/int16_test_nullable.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(?Int16, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(i16, -32768), values[0].?.asI16());
+    try std.testing.expect(values[1] == null);
+    try std.testing.expectEqual(@as(i16, 0), values[2].?.asI16());
+    try std.testing.expect(values[3] == null);
+    try std.testing.expectEqual(@as(i16, 32767), values[4].?.asI16());
+}
+
+test "uint16 logical type" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/uint16_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(UInt16, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(u16, 0), values[0].asU16());
+    try std.testing.expectEqual(@as(u16, 1000), values[1].asU16());
+    try std.testing.expectEqual(@as(u16, 32768), values[2].asU16());
+    try std.testing.expectEqual(@as(u16, 50000), values[3].asU16());
+    try std.testing.expectEqual(@as(u16, 65535), values[4].asU16());
+}
+
+test "uint16 logical type with nulls" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/uint16_test_nullable.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(?UInt16, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(u16, 0), values[0].?.asU16());
+    try std.testing.expect(values[1] == null);
+    try std.testing.expectEqual(@as(u16, 32768), values[2].?.asU16());
+    try std.testing.expect(values[3] == null);
+    try std.testing.expectEqual(@as(u16, 65535), values[4].?.asU16());
+}
+
+test "uint32 logical type" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/uint32_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(UInt32, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(u32, 0), values[0].value);
+    try std.testing.expectEqual(@as(u32, 1000), values[1].value);
+    try std.testing.expectEqual(@as(u32, 2147483648), values[2].value);
+    try std.testing.expectEqual(@as(u32, 3000000000), values[3].value);
+    try std.testing.expectEqual(@as(u32, 4294967295), values[4].value);
+}
+
+test "uint32 logical type with nulls" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/uint32_test_nullable.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(?UInt32, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(u32, 0), values[0].?.value);
+    try std.testing.expect(values[1] == null);
+    try std.testing.expectEqual(@as(u32, 2147483648), values[2].?.value);
+    try std.testing.expect(values[3] == null);
+    try std.testing.expectEqual(@as(u32, 4294967295), values[4].?.value);
+}
+
+test "uint64 logical type" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/uint64_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(UInt64, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(u64, 0), values[0].value);
+    try std.testing.expectEqual(@as(u64, 1000), values[1].value);
+    try std.testing.expectEqual(@as(u64, 9223372036854775808), values[2].value);
+    try std.testing.expectEqual(@as(u64, 15000000000000000000), values[3].value);
+    try std.testing.expectEqual(@as(u64, 18446744073709551615), values[4].value);
+}
+
+test "uint64 logical type with nulls" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/uint64_test_nullable.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(?UInt64, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(u64, 0), values[0].?.value);
+    try std.testing.expect(values[1] == null);
+    try std.testing.expectEqual(@as(u64, 9223372036854775808), values[2].?.value);
+    try std.testing.expect(values[3] == null);
+    try std.testing.expectEqual(@as(u64, 18446744073709551615), values[4].?.value);
 }
 
 const std = @import("std");
