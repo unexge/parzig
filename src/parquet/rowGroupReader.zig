@@ -5,6 +5,7 @@ const parquet_schema = @import("../generated/parquet.zig");
 const protocol_compact = @import("../thrift.zig").protocol_compact;
 const compress = @import("../compress.zig");
 const physical = @import("./physical.zig");
+const logical = @import("./logical.zig");
 const File = @import("./File.zig");
 
 const RowGroupReader = @This();
@@ -18,32 +19,26 @@ pub fn ColumnData(comptime T: type) type {
     };
 }
 
-fn isAssignable(comptime T: type, parquet_type: parquet_schema.Type) bool {
-    return switch (parquet_type) {
-        .BOOLEAN => T == bool,
-        .INT32 => T == i32,
-        .INT64 => T == i64,
-        .INT96 => T == i96,
-        .FLOAT => T == f32,
-        .DOUBLE => T == f64,
-        .BYTE_ARRAY => T == []const u8 or T == []u8,
-        .FIXED_LEN_BYTE_ARRAY => switch (@typeInfo(T)) {
-            .array => |arr| arr.child == u8,
-            else => false,
-        },
-    };
-}
-
-/// Calculate the bit width needed to encode a level value
-fn levelBitWidth(max_level: u8) u8 {
-    return std.math.log2_int_ceil(u8, max_level + 1);
-}
-
 pub fn readColumn(comptime T: type, file: *File, column: *parquet_schema.ColumnChunk) ![]T {
     return (try readColumnWithLevels(T, file, column)).values;
 }
 
 pub fn readColumnWithLevels(comptime T: type, file: *File, column: *parquet_schema.ColumnChunk) !ColumnData(T) {
+    if (comptime logical.parse(unwrapOptional(T))) |logical_type| {
+        const PhysicalT = if (@typeInfo(T) == .optional) ?logical_type.physical_type else logical_type.physical_type;
+        const physical_data = try readPhysicalColumnWithLevels(PhysicalT, file, column);
+        const logical_values = logical_type.fromPhysical(PhysicalT, physical_data.values);
+        return ColumnData(T){
+            .values = logical_values,
+            .def_levels = physical_data.def_levels,
+            .rep_levels = physical_data.rep_levels,
+        };
+    } else {
+        return readPhysicalColumnWithLevels(T, file, column);
+    }
+}
+
+fn readPhysicalColumnWithLevels(comptime T: type, file: *File, column: *parquet_schema.ColumnChunk) !ColumnData(T) {
     const Inner = unwrapOptional(T);
 
     const metadata = column.meta_data orelse return error.MissingColumnMetadata;
@@ -354,6 +349,26 @@ fn readDictionaryPage(comptime T: type, arena: std.mem.Allocator, page_header: p
     const dict_values = try arena.alloc(T, @intCast(header.num_values));
     try physical.plain(T, arena, dict_decoder, dict_values);
     return dict_values;
+}
+
+fn isAssignable(comptime T: type, parquet_type: parquet_schema.Type) bool {
+    return switch (parquet_type) {
+        .BOOLEAN => T == bool,
+        .INT32 => T == i32,
+        .INT64 => T == i64,
+        .INT96 => T == i96,
+        .FLOAT => T == f32,
+        .DOUBLE => T == f64,
+        .BYTE_ARRAY => T == []const u8 or T == []u8,
+        .FIXED_LEN_BYTE_ARRAY => switch (@typeInfo(T)) {
+            .array => |arr| arr.child == u8,
+            else => false,
+        },
+    };
+}
+
+fn levelBitWidth(max_level: u8) u8 {
+    return std.math.log2_int_ceil(u8, max_level + 1);
 }
 
 fn countNonNulls(
