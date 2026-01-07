@@ -11,6 +11,7 @@ pub const TimeMicros = logical.TimeMicros;
 pub const TimeNanos = logical.TimeNanos;
 pub const UUID = logical.UUID;
 pub const String = logical.String;
+pub const Enum = logical.Enum;
 
 test {
     _ = File;

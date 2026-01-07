@@ -111,6 +111,8 @@ pub const UUID = struct {
 
 pub const String = []const u8;
 
+pub const Enum = []const u8;
+
 test "date logical type" {
     var reader_buf: [1024]u8 = undefined;
     var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/date_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
@@ -499,6 +501,47 @@ test "string logical type with utf8" {
     try std.testing.expectEqualStrings("日本語", strings[2]);
     try std.testing.expectEqualStrings("🎉🚀✨", strings[3]);
     try std.testing.expectEqualStrings("Здравствуй", strings[4]);
+}
+
+test "enum logical type" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/enum_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(4, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const enums = try rg.readColumn(Enum, 0);
+    try std.testing.expectEqual(4, enums.len);
+
+    try std.testing.expectEqualStrings("active", enums[0]);
+    try std.testing.expectEqualStrings("pending", enums[1]);
+    try std.testing.expectEqualStrings("completed", enums[2]);
+    try std.testing.expectEqualStrings("active", enums[3]);
+}
+
+test "enum logical type with nulls" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/enum_test_nullable.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const enums = try rg.readColumn(?Enum, 0);
+    try std.testing.expectEqual(5, enums.len);
+
+    try std.testing.expectEqualStrings("active", enums[0].?);
+    try std.testing.expect(enums[1] == null);
+    try std.testing.expectEqualStrings("pending", enums[2].?);
+    try std.testing.expect(enums[3] == null);
+    try std.testing.expectEqualStrings("completed", enums[4].?);
 }
 
 const std = @import("std");
