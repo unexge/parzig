@@ -22,6 +22,8 @@ pub fn parse(comptime T: type) ?type {
         return TimeMicros;
     } else if (T == TimeNanos) {
         return TimeNanos;
+    } else if (T == UUID) {
+        return UUID;
     } else {
         return null;
     }
@@ -93,6 +95,16 @@ pub const TimeNanos = struct {
     pub const physical_type = i64;
 
     pub inline fn fromPhysical(comptime T: type, physical: []T) if (@typeInfo(T) == .optional) []?TimeNanos else []TimeNanos {
+        return @ptrCast(physical);
+    }
+};
+
+pub const UUID = struct {
+    bytes: [16]u8,
+
+    pub const physical_type = [16]u8;
+
+    pub inline fn fromPhysical(comptime T: type, physical: []T) if (@typeInfo(T) == .optional) []?UUID else []UUID {
         return @ptrCast(physical);
     }
 };
@@ -382,6 +394,47 @@ test "time nanos logical type with nulls" {
     try std.testing.expectEqual(@as(i64, 45045123456789), times[2].?.nanos_since_midnight);
     try std.testing.expect(times[3] == null);
     try std.testing.expectEqual(@as(i64, 29730987654321), times[4].?.nanos_since_midnight);
+}
+
+test "uuid logical type" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/uuid_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(4, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const uuids = try rg.readColumn(UUID, 0);
+    try std.testing.expectEqual(4, uuids.len);
+
+    try std.testing.expectEqualSlices(u8, &[16]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, &uuids[0].bytes);
+    try std.testing.expectEqualSlices(u8, &[16]u8{ 0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4, 0xa7, 0x16, 0x44, 0x66, 0x55, 0x44, 0x00, 0x00 }, &uuids[1].bytes);
+    try std.testing.expectEqualSlices(u8, &[16]u8{ 0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8 }, &uuids[2].bytes);
+    try std.testing.expectEqualSlices(u8, &[16]u8{ 0x6b, 0xa7, 0xb8, 0x11, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8 }, &uuids[3].bytes);
+}
+
+test "uuid logical type with nulls" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/uuid_test_nullable.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const uuids = try rg.readColumn(?UUID, 0);
+    try std.testing.expectEqual(5, uuids.len);
+
+    try std.testing.expectEqualSlices(u8, &[16]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, &uuids[0].?.bytes);
+    try std.testing.expect(uuids[1] == null);
+    try std.testing.expectEqualSlices(u8, &[16]u8{ 0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4, 0xa7, 0x16, 0x44, 0x66, 0x55, 0x44, 0x00, 0x00 }, &uuids[2].?.bytes);
+    try std.testing.expect(uuids[3] == null);
+    try std.testing.expectEqualSlices(u8, &[16]u8{ 0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8 }, &uuids[4].?.bytes);
 }
 
 const std = @import("std");
