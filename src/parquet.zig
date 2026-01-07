@@ -9,6 +9,7 @@ pub const TimestampNanos = logical.TimestampNanos;
 pub const TimeMillis = logical.TimeMillis;
 pub const TimeMicros = logical.TimeMicros;
 pub const TimeNanos = logical.TimeNanos;
+pub const UUID = logical.UUID;
 
 test {
     _ = File;
