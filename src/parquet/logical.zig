@@ -109,6 +109,8 @@ pub const UUID = struct {
     }
 };
 
+pub const String = []const u8;
+
 test "date logical type" {
     var reader_buf: [1024]u8 = undefined;
     var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/date_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
@@ -435,6 +437,68 @@ test "uuid logical type with nulls" {
     try std.testing.expectEqualSlices(u8, &[16]u8{ 0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4, 0xa7, 0x16, 0x44, 0x66, 0x55, 0x44, 0x00, 0x00 }, &uuids[2].?.bytes);
     try std.testing.expect(uuids[3] == null);
     try std.testing.expectEqualSlices(u8, &[16]u8{ 0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8 }, &uuids[4].?.bytes);
+}
+
+test "string logical type" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/string_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(4, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const strings = try rg.readColumn(String, 0);
+    try std.testing.expectEqual(4, strings.len);
+
+    try std.testing.expectEqualStrings("", strings[0]);
+    try std.testing.expectEqualStrings("hello", strings[1]);
+    try std.testing.expectEqualStrings("world", strings[2]);
+    try std.testing.expectEqualStrings("Zig is fast! 🚀", strings[3]);
+}
+
+test "string logical type with nulls" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/string_test_nullable.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const strings = try rg.readColumn(?String, 0);
+    try std.testing.expectEqual(5, strings.len);
+
+    try std.testing.expectEqualStrings("hello", strings[0].?);
+    try std.testing.expect(strings[1] == null);
+    try std.testing.expectEqualStrings("café", strings[2].?);
+    try std.testing.expect(strings[3] == null);
+    try std.testing.expectEqualStrings("你好", strings[4].?);
+}
+
+test "string logical type with utf8" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/string_test_utf8.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const strings = try rg.readColumn(String, 0);
+    try std.testing.expectEqual(5, strings.len);
+
+    try std.testing.expectEqualStrings("ASCII only", strings[0]);
+    try std.testing.expectEqualStrings("Café ☕", strings[1]);
+    try std.testing.expectEqualStrings("日本語", strings[2]);
+    try std.testing.expectEqualStrings("🎉🚀✨", strings[3]);
+    try std.testing.expectEqualStrings("Здравствуй", strings[4]);
 }
 
 const std = @import("std");
