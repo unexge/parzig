@@ -14,6 +14,12 @@ pub const String = logical.String;
 pub const Enum = logical.Enum;
 pub const Json = logical.Json;
 pub const Bson = logical.Bson;
+pub const Int8 = logical.Int8;
+pub const UInt8 = logical.UInt8;
+pub const Int16 = logical.Int16;
+pub const UInt16 = logical.UInt16;
+pub const UInt32 = logical.UInt32;
+pub const UInt64 = logical.UInt64;
 
 test {
     _ = File;
