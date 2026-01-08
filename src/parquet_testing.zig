@@ -148,7 +148,7 @@ test "binary data" {
     }, try rg.readColumn([]const u8, 0));
 }
 
-test "byte array decimal" {
+test "byte array decimal raw" {
     var reader_buf: [1024]u8 = undefined;
     var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/byte_array_decimal.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
@@ -592,7 +592,7 @@ test "datapage v2 snappy compressed" {
     try testing.expectEqualDeep(&[_]?i32{ 1, 2 }, e_list[4]);
 }
 
-test "int32 decimal" {
+test "int32 decimal raw" {
     var reader_buf: [1024]u8 = undefined;
     var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/int32_decimal.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
@@ -641,7 +641,7 @@ test "int32 with null pages" {
     try testing.expectEqual(@as(?i32, 370689415), values[19]);
 }
 
-test "int64 decimal" {
+test "int64 decimal raw" {
     var reader_buf: [1024]u8 = undefined;
     var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/int64_decimal.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
@@ -1091,7 +1091,7 @@ test "data index bloom encoding with length" {
     try testing.expectEqualDeep(&[_][]const u8{ "Hello", "This is", "a", "test", "How", "are you", "doing ", "today", "the quick", "brown fox", "jumps", "over", "the lazy", "dog" }, try rg.readColumn([]const u8, 0));
 }
 
-test "fixed length decimal" {
+test "fixed length decimal raw" {
     var reader_buf: [1024]u8 = undefined;
     var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/fixed_length_decimal.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
     var file = try File.read(testing.allocator, &file_reader);
@@ -1241,4 +1241,72 @@ test "dict page offset zero" {
 
     const expected = [_]?i32{1552} ** 39;
     try testing.expectEqualSlices(?i32, &expected, try rg.readColumn(?i32, 0));
+}
+
+test "int32 decimal" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/int32_decimal.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(24, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    const values = try rg.readColumn(parzig.parquet.Decimal, 0);
+
+    try testing.expectEqual(24, values.len);
+    try testing.expectEqual(@as(f128, 1.0), values[0].value);
+    try testing.expectEqual(@as(f128, 24.0), values[23].value);
+}
+
+test "int64 decimal" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/int64_decimal.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(24, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    const values = try rg.readColumn(parzig.parquet.Decimal, 0);
+
+    try testing.expectEqual(24, values.len);
+    try testing.expectEqual(@as(f128, 1.0), values[0].value);
+    try testing.expectEqual(@as(f128, 24.0), values[23].value);
+}
+
+test "byte array decimal" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/byte_array_decimal.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(24, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    const values = try rg.readColumn(parzig.parquet.Decimal, 0);
+
+    try testing.expectEqual(24, values.len);
+    try testing.expectEqual(@as(f128, 1.0), values[0].value);
+    try testing.expectEqual(@as(f128, 24.0), values[23].value);
+}
+
+test "fixed length decimal" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try Io.Dir.cwd().openFile(io, "testdata/parquet-testing/data/fixed_length_decimal.parquet", .{ .mode = .read_only })).reader(io, &reader_buf);
+    var file = try File.read(testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try testing.expectEqual(1, file.metadata.row_groups.len);
+    try testing.expectEqual(24, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+    const values = try rg.readColumn(parzig.parquet.Decimal, 0);
+
+    try testing.expectEqual(24, values.len);
+    try testing.expectEqual(@as(f128, 1.0), values[0].value);
+    try testing.expectEqual(@as(f128, 24.0), values[23].value);
 }
