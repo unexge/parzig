@@ -40,6 +40,8 @@ pub fn parse(comptime T: type) ?type {
         return UInt32;
     } else if (T == UInt64) {
         return UInt64;
+    } else if (T == Float16) {
+        return Float16;
     } else {
         return null;
     }
@@ -208,6 +210,20 @@ pub const UInt64 = struct {
     pub inline fn fromPhysical(comptime T: type, physical: []T) if (@typeInfo(T) == .optional) []?UInt64 else []UInt64 {
         const reinterpreted: if (@typeInfo(T) == .optional) []?u64 else []u64 = @ptrCast(physical);
         return @ptrCast(reinterpreted);
+    }
+};
+
+pub const Float16 = struct {
+    bytes: [2]u8,
+
+    pub const physical_type = [2]u8;
+
+    pub inline fn fromPhysical(comptime T: type, physical: []T) if (@typeInfo(T) == .optional) []?Float16 else []Float16 {
+        return @ptrCast(physical);
+    }
+
+    pub fn asF16(self: Float16) f16 {
+        return @bitCast(self.bytes);
     }
 };
 
@@ -974,6 +990,47 @@ test "uint64 logical type with nulls" {
     try std.testing.expectEqual(@as(u64, 9223372036854775808), values[2].?.value);
     try std.testing.expect(values[3] == null);
     try std.testing.expectEqual(@as(u64, 18446744073709551615), values[4].?.value);
+}
+
+test "float16 logical type" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/float16_test.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(4, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(Float16, 0);
+    try std.testing.expectEqual(4, values.len);
+
+    try std.testing.expectEqual(@as(f16, 0.0), values[0].asF16());
+    try std.testing.expectEqual(@as(f16, 1.5), values[1].asF16());
+    try std.testing.expectEqual(@as(f16, -2.5), values[2].asF16());
+    try std.testing.expectApproxEqAbs(@as(f16, 3.14), values[3].asF16(), 0.01);
+}
+
+test "float16 logical type with nulls" {
+    var reader_buf: [1024]u8 = undefined;
+    var file_reader = (try std.Io.Dir.cwd().openFile(std.testing.io, "testdata/float16_test_nullable.parquet", .{ .mode = .read_only })).reader(std.testing.io, &reader_buf);
+    var file = try File.read(std.testing.allocator, &file_reader);
+    defer file.deinit();
+
+    try std.testing.expectEqual(1, file.metadata.row_groups.len);
+    try std.testing.expectEqual(5, file.metadata.num_rows);
+
+    var rg = file.rowGroup(0);
+
+    const values = try rg.readColumn(?Float16, 0);
+    try std.testing.expectEqual(5, values.len);
+
+    try std.testing.expectEqual(@as(f16, 1.5), values[0].?.asF16());
+    try std.testing.expect(values[1] == null);
+    try std.testing.expectEqual(@as(f16, -2.5), values[2].?.asF16());
+    try std.testing.expect(values[3] == null);
+    try std.testing.expectEqual(@as(f16, 0.0), values[4].?.asF16());
 }
 
 const std = @import("std");

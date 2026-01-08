@@ -512,8 +512,18 @@ test "float16 nonzeros and nans" {
     try testing.expectEqual(8, file.metadata.num_rows);
 
     var rg = file.rowGroup(0);
-    // null, 1.0, -2.0, NaN, 0.0, -1.0, -0.0, 2.0
-    try testing.expectEqualSlices(?[2]u8, &[_]?[2]u8{ null, [_]u8{ 0, 60 }, [_]u8{ 0, 192 }, [_]u8{ 0, 126 }, [_]u8{ 0, 0 }, [_]u8{ 0, 188 }, [_]u8{ 0, 128 }, [_]u8{ 0, 64 } }, try rg.readColumn(?[2]u8, 0));
+
+    const values = try rg.readColumn(?parzig.parquet.Float16, 0);
+    try testing.expectEqual(8, values.len);
+
+    try testing.expect(values[0] == null);
+    try testing.expectEqual(@as(f16, 1.0), values[1].?.asF16());
+    try testing.expectEqual(@as(f16, -2.0), values[2].?.asF16());
+    try testing.expect(std.math.isNan(values[3].?.asF16()));
+    try testing.expectEqual(@as(f16, 0.0), values[4].?.asF16());
+    try testing.expectEqual(@as(f16, -1.0), values[5].?.asF16());
+    try testing.expectEqual(@as(f16, -0.0), values[6].?.asF16());
+    try testing.expectEqual(@as(f16, 2.0), values[7].?.asF16());
 }
 
 test "float16 zeros and nans" {
@@ -526,8 +536,13 @@ test "float16 zeros and nans" {
     try testing.expectEqual(3, file.metadata.num_rows);
 
     var rg = file.rowGroup(0);
-    // null, 0.0, NaN
-    try testing.expectEqualSlices(?[2]u8, &[_]?[2]u8{ null, [_]u8{ 0, 0 }, [_]u8{ 0, 126 } }, try rg.readColumn(?[2]u8, 0));
+
+    const values = try rg.readColumn(?parzig.parquet.Float16, 0);
+    try testing.expectEqual(3, values.len);
+
+    try testing.expect(values[0] == null);
+    try testing.expectEqual(@as(f16, 0.0), values[1].?.asF16());
+    try testing.expect(std.math.isNan(values[2].?.asF16()));
 }
 
 test "fixed length decimal legacy" {

@@ -20,6 +20,7 @@ pub const Int16 = logical.Int16;
 pub const UInt16 = logical.UInt16;
 pub const UInt32 = logical.UInt32;
 pub const UInt64 = logical.UInt64;
+pub const Float16 = logical.Float16;
 
 test {
     _ = File;
