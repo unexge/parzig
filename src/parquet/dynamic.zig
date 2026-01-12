@@ -11,10 +11,22 @@ pub const Values = union(enum) {
     float: []?f32,
     double: []?f64,
     byte_array: []?[]u8,
+    fixed_len_byte_array_1: []?[1]u8,
     fixed_len_byte_array_2: []?[2]u8,
+    fixed_len_byte_array_3: []?[3]u8,
     fixed_len_byte_array_4: []?[4]u8,
+    fixed_len_byte_array_5: []?[5]u8,
     fixed_len_byte_array_6: []?[6]u8,
+    fixed_len_byte_array_7: []?[7]u8,
     fixed_len_byte_array_8: []?[8]u8,
+    fixed_len_byte_array_9: []?[9]u8,
+    fixed_len_byte_array_10: []?[10]u8,
+    fixed_len_byte_array_11: []?[11]u8,
+    fixed_len_byte_array_12: []?[12]u8,
+    fixed_len_byte_array_13: []?[13]u8,
+    fixed_len_byte_array_14: []?[14]u8,
+    fixed_len_byte_array_15: []?[15]u8,
+    fixed_len_byte_array_16: []?[16]u8,
 };
 
 pub fn readColumn(file: *File, column: *parquet_schema.ColumnChunk) !Values {
@@ -33,10 +45,9 @@ pub fn readColumn(file: *File, column: *parquet_schema.ColumnChunk) !Values {
             const type_length = schema_info.elem.type_length orelse return error.MissingTypeLength;
 
             return switch (type_length) {
-                2 => .{ .fixed_len_byte_array_2 = try readColumnComptime(?[2]u8, file, column) },
-                4 => .{ .fixed_len_byte_array_4 = try readColumnComptime(?[4]u8, file, column) },
-                6 => .{ .fixed_len_byte_array_6 = try readColumnComptime(?[6]u8, file, column) },
-                8 => .{ .fixed_len_byte_array_8 = try readColumnComptime(?[8]u8, file, column) },
+                inline 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 => |len| {
+                    return @unionInit(Values, std.fmt.comptimePrint("fixed_len_byte_array_{d}", .{len}), try readColumnComptime(?[len]u8, file, column));
+                },
                 else => {
                     std.debug.print("Unsupported type length for `FIXED_LEN_BYTE_ARRAY`: {d}\n", .{type_length});
                     return error.UnsupportedFixedLength;

@@ -5,7 +5,7 @@
 //
 // This module aims to provide zero-copy conversion between logical and physical types,
 // and as a consequence, some types might be unergonomic,
-// like `Int8` actually stores it's value as `i32` and provides `asI8` method to get the value as `i8`.
+// For example, `Int8` actually stores it's value as `i32` and provides `asI8` method to get the value as `i8`.
 //
 // See https://github.com/apache/parquet-format/blob/master/LogicalTypes.md
 
@@ -226,6 +226,43 @@ pub const Float16 = struct {
         return @bitCast(self.bytes);
     }
 };
+
+pub const Decimal = struct {
+    value: f128,
+};
+
+pub fn convertToDecimal(comptime T: type, values: anytype, scale: i32, allocator: std.mem.Allocator) ![]T {
+    const is_optional = T == ?Decimal;
+    const result = try allocator.alloc(T, values.len);
+
+    var divisor: f128 = 1.0;
+    for (0..@intCast(scale)) |_| divisor *= 10.0;
+
+    for (values, 0..) |v, i| {
+        result[i] = if (is_optional)
+            (if (v) |val| Decimal{ .value = toF128(val) / divisor } else null)
+        else
+            Decimal{ .value = toF128(v) / divisor };
+    }
+
+    return result;
+}
+
+fn toF128(value: anytype) f128 {
+    const V = @TypeOf(value);
+    if (V == i32 or V == i64) return @floatFromInt(value);
+    return @floatFromInt(parseBigEndianSigned(value));
+}
+
+fn parseBigEndianSigned(bytes: anytype) i128 {
+    if (bytes.len == 0) return 0;
+    const is_negative = (bytes[0] & 0x80) != 0;
+    var result: i128 = if (is_negative) -1 else 0;
+    for (bytes) |b| {
+        result = (result << 8) | b;
+    }
+    return result;
+}
 
 test "date logical type" {
     var reader_buf: [1024]u8 = undefined;
@@ -1034,5 +1071,4 @@ test "float16 logical type with nulls" {
 }
 
 const std = @import("std");
-const parquet_schema = @import("../generated/parquet.zig");
 const File = @import("./File.zig");

@@ -33,6 +33,37 @@ pub fn readColumnWithLevels(comptime T: type, file: *File, column: *parquet_sche
             .def_levels = physical_data.def_levels,
             .rep_levels = physical_data.rep_levels,
         };
+    } else if (unwrapOptional(T) == logical.Decimal) {
+        const is_optional = T == ?logical.Decimal;
+        const metadata = column.meta_data orelse return error.MissingColumnMetadata;
+        const schema = file.findSchemaElement(metadata.path_in_schema) orelse return error.UnknownField;
+        const scale = schema.elem.scale orelse return error.MissingDecimalScale;
+
+        switch (metadata.type) {
+            .INT32 => {
+                const physical_data = try readPhysicalColumnWithLevels(if (is_optional) ?i32 else i32, file, column);
+                return .{ .values = try logical.convertToDecimal(T, physical_data.values, scale, file.arena.allocator()), .def_levels = physical_data.def_levels, .rep_levels = physical_data.rep_levels };
+            },
+            .INT64 => {
+                const physical_data = try readPhysicalColumnWithLevels(if (is_optional) ?i64 else i64, file, column);
+                return .{ .values = try logical.convertToDecimal(T, physical_data.values, scale, file.arena.allocator()), .def_levels = physical_data.def_levels, .rep_levels = physical_data.rep_levels };
+            },
+            .BYTE_ARRAY => {
+                const physical_data = try readPhysicalColumnWithLevels(if (is_optional) ?[]const u8 else []const u8, file, column);
+                return .{ .values = try logical.convertToDecimal(T, physical_data.values, scale, file.arena.allocator()), .def_levels = physical_data.def_levels, .rep_levels = physical_data.rep_levels };
+            },
+            .FIXED_LEN_BYTE_ARRAY => {
+                const type_length = schema.elem.type_length orelse return error.MissingTypeLength;
+                switch (type_length) {
+                    inline 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 => |len| {
+                        const physical_data = try readPhysicalColumnWithLevels(if (is_optional) ?[len]u8 else [len]u8, file, column);
+                        return .{ .values = try logical.convertToDecimal(T, physical_data.values, scale, file.arena.allocator()), .def_levels = physical_data.def_levels, .rep_levels = physical_data.rep_levels };
+                    },
+                    else => return error.UnsupportedFixedLenDecimalSize,
+                }
+            },
+            else => return error.UnsupportedDecimalPhysicalType,
+        }
     } else {
         return readPhysicalColumnWithLevels(T, file, column);
     }
