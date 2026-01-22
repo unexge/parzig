@@ -3,19 +3,19 @@ const parzig = @import("parzig");
 
 const Io = std.Io;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init.Minimal) !void {
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer {
         std.debug.assert(gpa.deinit() == .ok);
     }
     const allocator = gpa.allocator();
 
-    var args = std.process.args();
-    _ = args.next() orelse unreachable; // program name
+    var args = std.process.Args.Iterator.init(init.args);
+    _ = args.skip(); // program name
     const path = args.next() orelse return error.MissingArgument;
     std.debug.print("Parsing {s}\n", .{path});
 
-    var threaded: Io.Threaded = .init(allocator, .{});
+    var threaded: Io.Threaded = .init(allocator, .{ .environ = init.environ });
     defer threaded.deinit();
     const io = threaded.io();
 
@@ -63,10 +63,22 @@ pub fn main() !void {
                 .float => |data| printValues(f32, data),
                 .double => |data| printValues(f64, data),
                 .byte_array => |data| printValues([]u8, data),
+                .fixed_len_byte_array_1 => |data| printValues([1]u8, data),
                 .fixed_len_byte_array_2 => |data| printValues([2]u8, data),
+                .fixed_len_byte_array_3 => |data| printValues([3]u8, data),
                 .fixed_len_byte_array_4 => |data| printValues([4]u8, data),
+                .fixed_len_byte_array_5 => |data| printValues([5]u8, data),
                 .fixed_len_byte_array_6 => |data| printValues([6]u8, data),
+                .fixed_len_byte_array_7 => |data| printValues([7]u8, data),
                 .fixed_len_byte_array_8 => |data| printValues([8]u8, data),
+                .fixed_len_byte_array_9 => |data| printValues([9]u8, data),
+                .fixed_len_byte_array_10 => |data| printValues([10]u8, data),
+                .fixed_len_byte_array_11 => |data| printValues([11]u8, data),
+                .fixed_len_byte_array_12 => |data| printValues([12]u8, data),
+                .fixed_len_byte_array_13 => |data| printValues([13]u8, data),
+                .fixed_len_byte_array_14 => |data| printValues([14]u8, data),
+                .fixed_len_byte_array_15 => |data| printValues([15]u8, data),
+                .fixed_len_byte_array_16 => |data| printValues([16]u8, data),
             }
         }
     }
