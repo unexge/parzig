@@ -3,14 +3,14 @@ const parzig = @import("parzig");
 
 const Io = std.Io;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init.Minimal) !void {
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer {
         std.debug.assert(gpa.deinit() == .ok);
     }
     const allocator = gpa.allocator();
 
-    var threaded: Io.Threaded = .init(allocator, .{});
+    var threaded: Io.Threaded = .init(allocator, .{ .environ = init.environ });
     defer threaded.deinit();
     const io = threaded.io();
 
