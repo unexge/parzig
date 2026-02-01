@@ -89,10 +89,26 @@ pub fn build(b: *std.Build) void {
     parquet_testing.root_module.addImport("parzig", lib);
     const run_parquet_testing = b.addRunArtifact(parquet_testing);
 
+    const public_datasets_options = b.addOptions();
+    const ci_tests = b.option(bool, "ci-tests", "Enable CI-only tests for large public datasets") orelse false;
+    public_datasets_options.addOption(bool, "ci_tests", ci_tests);
+
+    const public_datasets_testing = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/public_datasets_testing.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    public_datasets_testing.root_module.addImport("parzig", lib);
+    public_datasets_testing.root_module.addOptions("build_options", public_datasets_options);
+    const run_public_datasets_testing = b.addRunArtifact(public_datasets_testing);
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
     test_step.dependOn(&run_parquet_testing.step);
+    test_step.dependOn(&run_public_datasets_testing.step);
 
     const test_lldb_step = b.step("test-lldb", "Debug unit tests with LLDB");
     const lldb = b.addSystemCommand(&.{"lldb"});
