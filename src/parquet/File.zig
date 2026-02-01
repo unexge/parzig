@@ -94,7 +94,7 @@ pub fn deinit(self: *File) void {
 
 /// Find a schema element by path and return its index, definition level, repetition level, and the element itself.
 /// Returns null if the path is not found or invalid.
-pub fn findSchemaElement(self: *File, path: [][]const u8) ?struct { index: usize, max_definition_level: u8, max_repetition_level: u8, elem: parquet_schema.SchemaElement } {
+pub fn findSchemaElement(self: *File, path: []const []const u8) ?struct { index: usize, max_definition_level: u8, max_repetition_level: u8, elem: parquet_schema.SchemaElement } {
     if (path.len == 0 or self.metadata.schema.len < 2) {
         return null;
     }

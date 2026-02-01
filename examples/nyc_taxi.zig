@@ -1,12 +1,3 @@
-# parzig
-
-A Parquet parser written in Zig using only the standard library.
-
-## Usage
-
-Here's an example analyzing [NYC taxi trip data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page):
-
-```zig
 const std = @import("std");
 const parzig = @import("parzig");
 
@@ -18,7 +9,7 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     var reader_buf: [4096]u8 = undefined;
-    const f = try Io.Dir.cwd().openFile(io, "green_tripdata_2025-10.parquet", .{ .mode = .read_only });
+    const f = try Io.Dir.cwd().openFile(io, "testdata/public-datasets/nyc-taxi/green_tripdata_2025-10.parquet", .{ .mode = .read_only });
     var file_reader = f.reader(io, &reader_buf);
 
     var file = try parzig.parquet.File.read(allocator, &file_reader);
@@ -57,38 +48,3 @@ pub fn main(init: std.process.Init) !void {
 fn columnIndex(file: *File, name: []const u8) usize {
     return file.findSchemaElement(&.{name}).?.index - 1;
 }
-```
-
-Output:
-```
-Total rides: 49416
-Total fares: $898727.45
-Total tips: $136046.83
-Total passengers: 57441
-First fare: $5.80
-```
-
-### Column Access
-
-**Static typing** - specify the column type at compile time:
-```zig
-const values = try rg.readColumn(i64, 0);
-const nullable = try rg.readColumn(?i64, 1);
-```
-
-**Dynamic typing** - type determined at runtime:
-```zig
-const dynamic = try rg.readColumnDynamic(0);
-switch (dynamic) {
-    .int64 => |data| // ...
-    .double => |data| // ...
-    .byte_array => |data| // ...
-    // ...
-}
-```
-
-**Nested types** - lists and maps:
-```zig
-const list = try rg.readListColumn(i32, 0);
-const map = try rg.readMapColumn([]const u8, i64, 0, 1);
-```
