@@ -55,7 +55,7 @@ pub fn main(init: std.process.Init) !void {
 }
 
 fn columnIndex(file: *File, name: []const u8) usize {
-    return file.findSchemaElement(&.{name}).?.index - 1;
+    return file.findSchemaElement(&.{name}).?.column_index;
 }
 ```
 
