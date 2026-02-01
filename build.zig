@@ -46,6 +46,21 @@ pub fn build(b: *std.Build) void {
     const generate_step = b.step("generate", "Generate Zig file from parquet.thrift");
     generate_step.dependOn(&generate_cmd.step);
 
+    const nyc_taxi_example = b.addExecutable(.{
+        .name = "nyc_taxi",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/nyc_taxi.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    nyc_taxi_example.root_module.addImport("parzig", lib);
+    b.installArtifact(nyc_taxi_example);
+
+    const nyc_taxi_cmd = b.addRunArtifact(nyc_taxi_example);
+    const nyc_taxi_step = b.step("nyc-taxi", "Run NYC taxi example");
+    nyc_taxi_step.dependOn(&nyc_taxi_cmd.step);
+
     const lib_unit_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/parzig.zig"),

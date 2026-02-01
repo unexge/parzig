@@ -3,19 +3,15 @@ const parzig = @import("parzig");
 
 const Io = std.Io;
 
-pub fn main(init: std.process.Init.Minimal) !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer {
-        std.debug.assert(gpa.deinit() == .ok);
-    }
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
-    var args = std.process.Args.Iterator.init(init.args);
+    var args = std.process.Args.Iterator.init(init.minimal.args);
     _ = args.skip(); // program name
     const path = args.next() orelse return error.MissingArgument;
     std.debug.print("Parsing {s}\n", .{path});
 
-    var threaded: Io.Threaded = .init(allocator, .{ .environ = init.environ });
+    var threaded: Io.Threaded = .init(allocator, .{ .environ = init.minimal.environ });
     defer threaded.deinit();
     const io = threaded.io();
 
