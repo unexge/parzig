@@ -12,6 +12,10 @@ public-datasets/
 │   ├── fhv_tripdata_2025-10.parquet
 │   ├── yellow_tripdata_2025-10.parquet (CI only)
 │   └── fhvhv_tripdata_2025-10.parquet (CI only)
+├── clickbench/         # ClickBench web analytics data (CI only)
+│   ├── hits_0.parquet
+│   ├── hits_1.parquet
+│   └── hits_2.parquet
 └── <future-dataset>/   # More datasets can be added
 ```
 
@@ -27,6 +31,20 @@ Source: [TLC Trip Record Data](https://www.nyc.gov/site/tlc/about/tlc-trip-recor
 | `fhv_tripdata_2025-10.parquet` | ~25MB | No |
 | `yellow_tripdata_2025-10.parquet` | ~50MB | Yes |
 | `fhvhv_tripdata_2025-10.parquet` | ~400MB | Yes |
+
+### ClickBench
+
+Source: [ClickHouse/ClickBench](https://github.com/ClickHouse/ClickBench)
+
+Real-world web analytics data with 105 columns covering diverse types. The dataset
+is "intentionally dirty" with no bloom filters or proper logical types, making it
+excellent for stress-testing edge cases.
+
+| File | Size | CI Only |
+|------|------|---------|
+| `hits_0.parquet` | ~150MB | Yes |
+| `hits_1.parquet` | ~150MB | Yes |
+| `hits_2.parquet` | ~150MB | Yes |
 
 ## Download
 

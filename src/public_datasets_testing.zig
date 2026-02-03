@@ -115,3 +115,32 @@ test "nyc taxi: fhvhv tripdata 2025-10 (ci only)" {
     // TODO: This causes OOM on the CI. We probably need to have a seperate arena for each row group and de-allocate it between.
     // try readAllRowGroups(&file);
 }
+
+// =============================================================================
+// ClickBench Dataset - CI only
+// Source: https://github.com/ClickHouse/ClickBench
+// 105 columns, real web analytics data, diverse types
+// =============================================================================
+
+test "clickbench: hits (ci only)" {
+    if (!ci_tests) return error.SkipZigTest;
+
+    const files = [_][]const u8{
+        "testdata/public-datasets/clickbench/hits_0.parquet",
+        "testdata/public-datasets/clickbench/hits_1.parquet",
+        "testdata/public-datasets/clickbench/hits_2.parquet",
+    };
+
+    for (files) |path| {
+        var reader_buf: [4096]u8 = undefined;
+        var file_reader = (try Io.Dir.cwd().openFile(io, path, .{ .mode = .read_only })).reader(io, &reader_buf);
+        var file = try File.read(testing.allocator, &file_reader);
+        defer file.deinit();
+
+        try testing.expectEqual(105, file.metadata.schema.len - 1); // -1 for root schema element
+        try testing.expect(file.metadata.num_rows > 0);
+        try testing.expect(file.metadata.row_groups.len > 0);
+
+        try readAllRowGroups(&file);
+    }
+}

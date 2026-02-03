@@ -336,7 +336,7 @@ fn decoderForPage(arena: std.mem.Allocator, inner_reader: *Reader, codec: parque
             break :blk &decompress.reader;
         },
         .SNAPPY => blk: {
-            const buf = try arena.alloc(u8, compress.snappy.Decompress.window_len);
+            const buf = try arena.alloc(u8, compress.snappy.Decompress.buffer_len);
             const decompress = try arena.create(compress.snappy.Decompress);
             decompress.* = compress.snappy.Decompress.init(inner_reader, buf);
             break :blk &decompress.reader;

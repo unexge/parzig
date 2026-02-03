@@ -5,10 +5,14 @@ const Limit = Io.Limit;
 const Writer = Io.Writer;
 
 pub const Decompress = struct {
-    pub const window_len = 65536;
+    pub const window_len = 65536 * 2;
+    pub const reader_buffer_len = 4096;
+    pub const buffer_len = window_len + reader_buffer_len;
 
     input: *Reader,
     remaining: usize,
+    total_written: usize,
+    window: *[window_len]u8,
     reader: Reader,
 
     state: union(enum) {
@@ -34,14 +38,17 @@ pub const Decompress = struct {
     };
 
     pub fn init(input: *Reader, buffer: []u8) Decompress {
+        std.debug.assert(buffer.len >= buffer_len);
         return .{
             .input = input,
             .remaining = 0,
+            .total_written = 0,
+            .window = buffer[0..window_len],
             .reader = .{
                 .vtable = &.{
                     .stream = Decompress.stream,
                 },
-                .buffer = buffer,
+                .buffer = buffer[window_len..],
                 .seek = 0,
                 .end = 0,
             },
@@ -71,40 +78,71 @@ pub const Decompress = struct {
             },
             .literal => |*literal_remaining| {
                 if (literal_remaining.* == 0) {
+                    if (d.remaining == 0) {
+                        d.state = .eof;
+                        return error.EndOfStream;
+                    }
                     try d.readTag();
                     continue :read d.state;
                 }
 
-                const out = limit.min(@enumFromInt(literal_remaining.*)).min(@enumFromInt(d.remaining)).slice(try w.writableSliceGreedyPreserve(Decompress.window_len, 1));
-                try d.input.readSliceAll(out);
+                const n = @min(@min(literal_remaining.*, remaining), d.remaining);
+                if (n == 0) return 0;
 
-                literal_remaining.* -= out.len;
-                d.remaining -= out.len;
-                w.advance(out.len);
-                return out.len;
+                // Read directly into our window buffer first
+                const window_start = d.total_written % window_len;
+                const window_space = window_len - window_start;
+                const first_chunk = @min(n, window_space);
+
+                try d.input.readSliceAll(d.window[window_start..][0..first_chunk]);
+                if (first_chunk < n) {
+                    try d.input.readSliceAll(d.window[0 .. n - first_chunk]);
+                }
+
+                // Now copy from window to output
+                const dst = try w.writableSlice(n);
+                for (0..n) |i| {
+                    dst[i] = d.window[(d.total_written + i) % window_len];
+                }
+
+                literal_remaining.* -= n;
+                d.remaining -= n;
+                d.total_written += n;
+
+                return n;
             },
             .copy => |*copy| {
                 if (copy.len == 0) {
+                    if (d.remaining == 0) {
+                        d.state = .eof;
+                        return error.EndOfStream;
+                    }
                     try d.readTag();
                     continue :read d.state;
                 }
 
-                const n = @min(copy.len, remaining);
-                std.debug.assert(n <= 64);
+                if (copy.offset > d.total_written or copy.offset == 0) {
+                    return error.ReadFailed;
+                }
 
-                const start = w.end - copy.offset;
-                const end = @min(start + n, w.end);
-                const length = end - start;
+                const n = @min(@min(copy.len, remaining), 64);
+                if (n == 0) return 0;
 
-                const src = w.buffer[start..end];
-                const dst = try w.writableSliceGreedyPreserve(Decompress.window_len, length);
-                @memmove(dst[0..length], src);
+                const dst = try w.writableSlice(n);
 
-                copy.len -= length;
-                d.remaining -= length;
-                w.advance(length);
+                // Copy from our circular window, byte by byte to handle overlapping copies
+                for (0..n) |i| {
+                    const src_idx = (d.total_written - copy.offset + i) % window_len;
+                    const byte = d.window[src_idx];
+                    d.window[(d.total_written + i) % window_len] = byte;
+                    dst[i] = byte;
+                }
 
-                return length;
+                copy.len -= n;
+                d.remaining -= n;
+                d.total_written += n;
+
+                return n;
             },
         }
     }
@@ -278,7 +316,7 @@ test "golden" {
 fn expectDecoded(input: []const u8, expected: []const u8) !void {
     var fixed: Reader = .fixed(input);
 
-    var decompress_buf: [1024]u8 = undefined;
+    var decompress_buf: [Decompress.buffer_len]u8 = undefined;
     var decompress = Decompress.init(&fixed, &decompress_buf);
 
     var decoded: Writer.Allocating = .init(testing.allocator);
