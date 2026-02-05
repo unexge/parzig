@@ -54,6 +54,28 @@ download_nyc_taxi() {
 }
 
 # =============================================================================
+# ClickBench Dataset
+# Source: https://github.com/ClickHouse/ClickBench
+# =============================================================================
+download_clickbench() {
+    local mode="$1"
+    local base_url="https://datasets.clickhouse.com/hits_compatible/athena_partitioned"
+    local dest="$DEST_DIR/clickbench"
+    mkdir -p "$dest"
+
+    echo "=== ClickBench Dataset ==="
+
+    if [[ "$mode" == "all" ]]; then
+        echo "Downloading ClickBench partitioned files (CI only)..."
+        for i in 0 1 2; do
+            download_file "$base_url/hits_$i.parquet" "$dest/hits_$i.parquet"
+        done
+    else
+        echo "Skipping ClickBench (CI only, use --all to download)"
+    fi
+}
+
+# =============================================================================
 # Add more datasets here following the same pattern
 # =============================================================================
 
@@ -93,6 +115,7 @@ done
 mkdir -p "$DEST_DIR"
 
 download_nyc_taxi "$MODE"
+download_clickbench "$MODE"
 
 echo ""
 echo "Done!"
