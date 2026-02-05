@@ -92,3 +92,18 @@ switch (dynamic) {
 const list = try rg.readListColumn(i32, 0);
 const map = try rg.readMapColumn([]const u8, i64, 0, 1);
 ```
+
+**Logical types** - choose how to interpret physical values:
+```zig
+const logical = parzig.parquet.logical;
+
+const dates = try rg.readColumn(logical.Date, 0);
+const timestamps = try rg.readColumn(logical.TimestampMicros, 1);
+const decimals = try rg.readColumn(logical.Decimal, 2);
+const uuids = try rg.readColumn(logical.UUID, 3);
+```
+
+Supported logical types:
+- **Temporal**: `Date`, `TimeMillis`, `TimeMicros`, `TimeNanos`, `TimestampMillis`, `TimestampMicros`, `TimestampNanos`
+- **Numeric**: `Int8`, `UInt8`, `Int16`, `UInt16`, `UInt32`, `UInt64`, `Float16`, `Decimal`
+- **Other**: `UUID`, `String`, `Enum`, `Json`, `Bson`
