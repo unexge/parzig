@@ -76,6 +76,65 @@ download_clickbench() {
 }
 
 # =============================================================================
+# TPC-H SF1 Dataset
+# Generated using DuckDB's TPC-H extension
+# =============================================================================
+download_tpch() {
+    local mode="$1"
+    local dest="$DEST_DIR/tpch-sf1"
+    mkdir -p "$dest"
+
+    echo "=== TPC-H SF1 Dataset ==="
+
+    local small_tables=("nation" "region" "supplier")
+    local big_tables=("lineitem" "orders" "customer" "part" "partsupp")
+
+    local need_generate=false
+    for table in "${small_tables[@]}"; do
+        if [[ ! -f "$dest/$table.parquet" ]]; then
+            need_generate=true
+            break
+        fi
+    done
+
+    if [[ "$mode" == "all" ]]; then
+        for table in "${big_tables[@]}"; do
+            if [[ ! -f "$dest/$table.parquet" ]]; then
+                need_generate=true
+                break
+            fi
+        done
+    fi
+
+    if [[ "$need_generate" == "false" ]]; then
+        echo "  All required TPC-H files already exist"
+        return
+    fi
+
+    local tables_to_generate=""
+    if [[ "$mode" == "all" ]]; then
+        tables_to_generate="nation region supplier lineitem orders customer part partsupp"
+    else
+        tables_to_generate="nation region supplier"
+    fi
+
+    echo "  Generating TPC-H SF1 data via DuckDB..."
+    uvx --from "duckdb" --with pyarrow python -c "
+import duckdb
+con = duckdb.connect()
+con.execute('INSTALL tpch; LOAD tpch; CALL dbgen(sf=1)')
+for table in '${tables_to_generate}'.split():
+    dest = '${dest}/' + table + '.parquet'
+    import os
+    if not os.path.exists(dest):
+        print(f'  Generating: {table}.parquet')
+        con.execute(f\"COPY {table} TO '{dest}' (FORMAT PARQUET)\")
+    else:
+        print(f'  Already exists: {table}.parquet')
+"
+}
+
+# =============================================================================
 # Add more datasets here following the same pattern
 # =============================================================================
 
@@ -116,6 +175,7 @@ mkdir -p "$DEST_DIR"
 
 download_nyc_taxi "$MODE"
 download_clickbench "$MODE"
+download_tpch "$MODE"
 
 echo ""
 echo "Done!"

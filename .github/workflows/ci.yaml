@@ -11,9 +11,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
       - name: Download public datasets
         run: ./scripts/download-public-datasets.sh --all
       - uses: mlugg/setup-zig@v2
