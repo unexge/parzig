@@ -107,3 +107,53 @@ Supported logical types:
 - **Temporal**: `Date`, `TimeMillis`, `TimeMicros`, `TimeNanos`, `TimestampMillis`, `TimestampMicros`, `TimestampNanos`
 - **Numeric**: `Int8`, `UInt8`, `Int16`, `UInt16`, `UInt32`, `UInt64`, `Float16`, `Decimal`
 - **Other**: `UUID`, `String`, `Enum`, `Json`, `Bson`
+
+### Schema Inspection
+
+After reading a file, you can inspect its schema through `file.metadata.schema`, which is an array of `SchemaElement` entries. The first element is always the root; the rest describe individual fields.
+
+**Listing all fields and their types:**
+```zig
+for (file.metadata.schema[1..]) |elem| {
+    std.debug.print("name={s} type={any} repetition={any} logical={any}\n", .{
+        elem.name,
+        elem.type,
+        elem.repetition_type,
+        elem.logicalType,
+    });
+}
+```
+
+Each `SchemaElement` exposes:
+- `name` — field name
+- `type` — physical type (`BOOLEAN`, `INT32`, `INT64`, `INT96`, `FLOAT`, `DOUBLE`, `BYTE_ARRAY`, `FIXED_LEN_BYTE_ARRAY`)
+- `repetition_type` — `REQUIRED`, `OPTIONAL`, or `REPEATED`
+- `logicalType` — logical type (`STRING`, `DATE`, `TIMESTAMP`, `DECIMAL`, `UUID`, `MAP`, `LIST`, etc.)
+- `converted_type` — legacy converted type
+- `num_children` — non-null for group (struct/nested) elements
+- `type_length` — byte width for `FIXED_LEN_BYTE_ARRAY`
+- `scale` / `precision` — for decimal types
+
+**Looking up a column by name:**
+```zig
+const info = file.findSchemaElement(&.{"fare_amount"}).?;
+// info.column_index — index to pass to readColumn / readColumnDynamic
+// info.max_definition_level — for nullable columns
+// info.max_repetition_level — for repeated (list) columns
+// info.elem — the SchemaElement with full type info
+```
+
+For nested schemas, pass the full path:
+```zig
+const nested = file.findSchemaElement(&.{ "address", "city" }).?;
+```
+
+**File-level metadata** is also available:
+```zig
+std.debug.print("version: {d}\n", .{file.metadata.version});
+std.debug.print("num_rows: {d}\n", .{file.metadata.num_rows});
+std.debug.print("row_groups: {d}\n", .{file.metadata.row_groups.len});
+if (file.metadata.created_by) |created_by| {
+    std.debug.print("created_by: {s}\n", .{created_by});
+}
+```
