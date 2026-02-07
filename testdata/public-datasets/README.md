@@ -12,6 +12,15 @@ public-datasets/
 │   ├── fhv_tripdata_2025-10.parquet
 │   ├── yellow_tripdata_2025-10.parquet (CI only)
 │   └── fhvhv_tripdata_2025-10.parquet (CI only)
+├── tpch-sf1/           # TPC-H benchmark data (SF1)
+│   ├── nation.parquet
+│   ├── region.parquet
+│   ├── supplier.parquet
+│   ├── lineitem.parquet (CI only)
+│   ├── orders.parquet (CI only)
+│   ├── customer.parquet (CI only)
+│   ├── part.parquet (CI only)
+│   └── partsupp.parquet (CI only)
 ├── clickbench/         # ClickBench web analytics data (CI only)
 │   ├── hits_0.parquet
 │   ├── hits_1.parquet
@@ -31,6 +40,25 @@ Source: [TLC Trip Record Data](https://www.nyc.gov/site/tlc/about/tlc-trip-recor
 | `fhv_tripdata_2025-10.parquet` | ~25MB | No |
 | `yellow_tripdata_2025-10.parquet` | ~50MB | Yes |
 | `fhvhv_tripdata_2025-10.parquet` | ~400MB | Yes |
+
+### TPC-H SF1
+
+Source: [TPC-H Benchmark](https://www.tpc.org/tpch/) (generated via DuckDB's TPC-H extension)
+
+The de facto standard benchmark for analytical database systems. 8 tables with a
+normalized supply chain schema. Provides diverse types including DECIMAL(15,2) and
+DATE columns, plus 49 row groups in the lineitem table.
+
+| File | Size | CI Only |
+|------|------|---------|
+| `nation.parquet` | ~2KB | No |
+| `region.parquet` | ~1KB | No |
+| `supplier.parquet` | ~771KB | No |
+| `lineitem.parquet` | ~197MB | Yes |
+| `orders.parquet` | ~53MB | Yes |
+| `customer.parquet` | ~12MB | Yes |
+| `part.parquet` | ~6MB | Yes |
+| `partsupp.parquet` | ~40MB | Yes |
 
 ### ClickBench
 
